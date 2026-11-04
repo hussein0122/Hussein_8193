@@ -27,7 +27,8 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string; role: string } | null>(null);
-  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([]);\n  const [teacherRequests, setTeacherRequests] = useState<any[]>([]);
+  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([]);
+  const [teacherRequests, setTeacherRequests] = useState<any[]>([]);
   const [teacherQuizzes, setTeacherQuizzes] = useState<any[]>([]);
   const [teacherBusy, setTeacherBusy] = useState(false);
   const [teacherMessage, setTeacherMessage] = useState("");
@@ -103,7 +104,7 @@ export default function Home() {
   }
   async function addQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setTeacherBusy(true); setTeacherMessage("");
-    const options = newQuestion.options.split("\\n").map(x=>x.trim()).filter(Boolean);
+    const options = newQuestion.options.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
     const correct = Number(newQuestion.correct)-1;
     if (options.length < 2 || correct < 0 || correct >= options.length) { setTeacherMessage("أدخل اختيارين على الأقل وحدد رقم الإجابة الصحيحة."); setTeacherBusy(false); return; }
     const { data: question, error } = await supabase.from("questions").insert({ quiz_id:newQuestion.quizId, body:newQuestion.body.trim(), question_type:"MCQ", points:newQuestion.points }).select("id").single();
