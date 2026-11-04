@@ -1,20 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
 <defs>
- <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#075BDF"/><stop offset="1" stop-color="#071B70"/></linearGradient>
- <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFE36B"/><stop offset="1" stop-color="#FFAA00"/></linearGradient>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#087BFF"/><stop offset=".55" stop-color="#064BCB"/><stop offset="1" stop-color="#06165D"/></linearGradient>
+ <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF16B"/><stop offset=".55" stop-color="#FFC21A"/><stop offset="1" stop-color="#F18A00"/></linearGradient>
+ <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#DDEAFF"/></linearGradient>
+ <linearGradient id="cap" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#173D9C"/><stop offset="1" stop-color="#06123E"/></linearGradient>
  <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+ <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"/></filter>
 </defs>
-<rect x="34" y="34" width="956" height="956" rx="220" fill="#06134F" opacity=".45" filter="url(#shadow)"/>
-<rect x="44" y="44" width="936" height="936" rx="218" fill="url(#bg)"/>
-<path d="M130 700 Q512 610 894 700 L894 805 Q512 720 130 805Z" fill="#0A2A9B" opacity=".8"/>
-<path d="M190 735 Q512 655 834 735 L790 825 Q512 760 234 825Z" fill="#F7FBFF"/>
-<path d="M235 786 Q512 720 789 786 L760 838 Q512 790 264 838Z" fill="url(#gold)"/>
-<path d="M300 260 L724 260 L680 340 L344 340Z" fill="#07164E"/>
-<path d="M512 125 L760 245 L512 300 L264 245Z" fill="#0B2E91" stroke="#75B8FF" stroke-width="20"/>
-<path d="M512 145 L720 245 L512 290 L304 245Z" fill="#0D3CA9"/>
-<path d="M690 232 L690 350" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
-<path d="M690 350 Q650 390 690 430 Q730 390 690 350Z" fill="url(#gold)"/>
-<path d="M510 340 C390 340 292 440 292 560 C292 680 390 760 510 760 C570 760 626 738 668 698" fill="none" stroke="#FFFFFF" stroke-width="76" stroke-linecap="round"/>
-<path d="M590 565 L700 680 L850 485" fill="none" stroke="url(#gold)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M420 760 Q512 800 604 760" fill="none" stroke="#D9E9FF" stroke-width="18" stroke-linecap="round"/>
+<rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+<path d="M0 190 Q300 40 600 130 T1024 100 V0 H0Z" fill="#2BAAFF" opacity=".17"/>
+<circle cx="160" cy="230" r="110" fill="#48B6FF" opacity=".10"/>
+<circle cx="870" cy="270" r="130" fill="#48B6FF" opacity=".10"/>
+<path d="M150 780 Q510 665 880 770 L850 870 Q510 790 175 875Z" fill="#03134F" opacity=".7"/>
+<!-- checklist sheet -->
+<path d="M270 310 Q270 270 312 270 H690 Q730 270 742 312 L820 745 Q828 790 780 800 H300 Q260 800 252 760Z" fill="#03134F" opacity=".45" filter="url(#shadow)"/>
+<path d="M255 300 Q255 260 297 260 H675 Q715 260 727 302 L805 735 Q813 780 765 790 H285 Q245 790 237 750Z" fill="url(#paper)" stroke="#06164D" stroke-width="18"/>
+<circle cx="390" cy="430" r="61" fill="#087BFF" stroke="#16469D" stroke-width="12"/>
+<path d="M355 430 L383 458 L435 395" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="390" cy="590" r="43" fill="none" stroke="#315BAA" stroke-width="15"/>
+<circle cx="390" cy="700" r="43" fill="none" stroke="#315BAA" stroke-width="15"/>
+<g fill="#91A9E5"><rect x="490" y="395" width="205" height="34" rx="17"/><rect x="490" y="470" width="160" height="30" rx="15"/><rect x="490" y="565" width="185" height="30" rx="15"/><rect x="490" y="675" width="160" height="30" rx="15"/></g>
+<!-- graduation cap -->
+<path d="M155 290 L510 105 L875 270 L520 445Z" fill="url(#cap)" stroke="#06123E" stroke-width="20" stroke-linejoin="round"/>
+<path d="M300 365 Q510 470 720 360 L700 445 Q510 565 320 445Z" fill="#0A246A" stroke="#06123E" stroke-width="16"/>
+<path d="M820 265 L820 420" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
+<path d="M820 415 Q770 465 820 520 Q870 465 820 415Z" fill="url(#gold)"/>
+<!-- pencil -->
+<g transform="rotate(32 730 570)">
+ <rect x="685" y="390" width="92" height="350" rx="24" fill="url(#gold)" stroke="#9A5A00" stroke-width="12"/>
+ <path d="M685 430 H777 V475 H685Z" fill="#FF6A73" stroke="#9A5A00" stroke-width="8"/>
+ <path d="M685 700 L731 790 L777 700Z" fill="#F4D0A0" stroke="#9A5A00" stroke-width="10"/>
+ <path d="M713 754 L731 790 L749 754Z" fill="#17244B"/>
+</g>
+<!-- gold orbit and sparkle -->
+<path d="M125 710 Q90 850 270 875 Q590 920 900 780" fill="none" stroke="url(#gold)" stroke-width="24" stroke-linecap="round"/>
+<path d="M870 120 L892 180 L952 202 L892 224 L870 284 L848 224 L788 202 L848 180Z" fill="url(#gold)"/>
+<path d="M170 170 L184 210 L224 224 L184 238 L170 278 L156 238 L116 224 L156 210Z" fill="#8AD7FF" opacity=".7"/>
 </svg>
