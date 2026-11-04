@@ -1,0 +1,69 @@
+name: Build Quizora Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/build-quizora-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies and prepare web placeholder
+        working-directory: frontend
+        run: |
+          npm install
+          mkdir -p www assets
+          printf '<!doctype html><html><head><meta charset="utf-8"></head><body>Quizora</body></html>' > www/index.html
+          npm install --no-save sharp
+
+      - name: Generate Android app icons
+        working-directory: frontend
+        run: |
+          node -e "require('sharp')('assets/quizora-icon.svg').resize(1024,1024).png().toFile('assets/icon-only.png')"
+          node -e "require('sharp')({create:{width:2732,height:2732,channels:4,background:'#082A9E'}}).png().toFile('assets/splash.png')"
+          npx capacitor-assets generate --android --assetPath assets
+
+      - name: Generate Android project
+        working-directory: frontend
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Quizora-Android-APK
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
