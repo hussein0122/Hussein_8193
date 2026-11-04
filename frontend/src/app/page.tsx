@@ -34,6 +34,7 @@ export default function Home() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [teacherRequests, setTeacherRequests] = useState<any[]>([]);
+  const [teacherResults, setTeacherResults] = useState<any[]>([]);
   const [teacherStatus, setTeacherStatus] = useState<string | null>(null);
   const [subjectName, setSubjectName] = useState("");
   const [subjectDescription, setSubjectDescription] = useState("");
@@ -82,7 +83,23 @@ export default function Home() {
           const { data: quizRows, error: quizError } = await supabase.from("quizzes").select("id,title,description,duration_minutes,published,subject_id,created_at").in("subject_id", ownedSubjects.map(x => x.id)).order("created_at", { ascending: false });
           if (quizError) throw quizError;
           setQuizzes((quizRows || []) as Quiz[]);
-        } else setQuizzes([]);
+          const quizIds = ownedSubjects.length ? (quizRows || []).map((q: any) => q.id) : [];
+          if (quizIds.length) {
+            const { data: resultRows, error: resultError } = await supabase.from("exam_attempts").select("id,exam_id,student_id,status,strikes,score,started_at,submitted_at,quizzes(title)").in("exam_id", quizIds).order("started_at", { ascending: false });
+            if (resultError) throw resultError;
+            const attemptsList = resultRows || [];
+            const studentIds = Array.from(new Set(attemptsList.map((a: any) => a.student_id)));
+            const attemptIds = attemptsList.map((a: any) => a.id);
+            const [{ data: studentRows }, { data: eventRows }] = await Promise.all([
+              studentIds.length ? supabase.from("profiles").select("id,full_name,email").in("id", studentIds) : Promise.resolve({ data: [] as any[] }),
+              attemptIds.length ? supabase.from("integrity_events").select("id,attempt_id,event_type,strike_number,occurred_at,status").in("attempt_id", attemptIds).order("occurred_at", { ascending: false }) : Promise.resolve({ data: [] as any[] })
+            ]);
+            const studentMap = new Map((studentRows || []).map((u: any) => [u.id, u]));
+            const eventMap = new Map<string, any[]>();
+            (eventRows || []).forEach((event: any) => eventMap.set(event.attempt_id, [...(eventMap.get(event.attempt_id) || []), event]));
+            setTeacherResults(attemptsList.map((a: any) => ({ ...a, student: studentMap.get(a.student_id), events: eventMap.get(a.id) || [] })));
+          } else setTeacherResults([]);
+        } else { setQuizzes([]); setTeacherResults([]); }
       } else if (profile.role === "STUDENT") {
         const [quizResult, attemptResult, requestResult] = await Promise.all([
           supabase.from("quizzes").select("id,title,description,duration_minutes,published,subject_id,created_at,subjects(name)").eq("published", true).order("created_at", { ascending: false }),
@@ -373,6 +390,7 @@ export default function Home() {
             <div className="rounded-3xl border bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">إضافة سؤال اختيار من متعدد</h3>
               <form onSubmit={addQuestion} className="mt-5 grid gap-3 md:grid-cols-2"><select className={inputClass} required value={questionForm.quiz_id} onChange={e => setQuestionForm({ ...questionForm, quiz_id: e.target.value })}><option value="">اختر الامتحان</option>{quizzes.filter(q => !q.published).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select><input className={inputClass} required value={questionForm.body} onChange={e => setQuestionForm({ ...questionForm, body: e.target.value })} placeholder="نص السؤال"/><textarea className={inputClass} required rows={5} value={questionForm.options} onChange={e => setQuestionForm({ ...questionForm, options: e.target.value })} placeholder={"اكتب كل اختيار في سطر مستقل"}/><div className="space-y-3"><input className={inputClass} type="number" min={1} value={questionForm.correct} onChange={e => setQuestionForm({ ...questionForm, correct: e.target.value })} placeholder="رقم الإجابة الصحيحة"/><input className={inputClass} type="number" min={0.5} step={0.5} value={questionForm.points} onChange={e => setQuestionForm({ ...questionForm, points: e.target.value })} placeholder="درجة السؤال"/></div><button className={primaryClass + " md:col-span-2"} disabled={busy || !questionForm.quiz_id}><Plus size={17}/> حفظ السؤال</button></form>
             </div>
+            <div className="rounded-3xl border bg-white p-6 shadow-sm lg:col-span-2"><h3 className="flex items-center gap-2 text-xl font-black"><BarChart3 className="text-blue-700"/> نتائج الطلاب ومخالفات النزاهة</h3><div className="mt-5 space-y-3">{teacherResults.map((r: any) => <div key={r.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><b>{r.student?.full_name || r.student?.email || "طالب"}</b><p className="mt-1 text-sm text-slate-500">{r.quizzes?.title || "امتحان"}</p></div><div className="text-left"><b className="text-blue-800">{r.score ?? "—"}</b><p className="text-xs text-slate-500">{r.status === "SUBMITTED" ? "تم التسليم" : r.status === "LOCKED" ? "مغلق بسبب مخالفات" : "قيد التنفيذ"}</p></div></div><div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500"><span>الإنذارات: {r.strikes}/3</span><span>تاريخ البدء: {new Date(r.started_at).toLocaleString("ar-EG")}</span></div>{r.events?.length > 0 && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><b>سجل المخالفات</b>{r.events.map((event: any) => <p key={event.id} className="mt-1">{event.strike_number}. {event.event_type === "TAB_HIDDEN" ? "مغادرة صفحة الامتحان" : event.event_type === "FULLSCREEN_EXIT" ? "الخروج من ملء الشاشة" : "فقدان تركيز النافذة"} — {new Date(event.occurred_at).toLocaleString("ar-EG")}</p>)}</div>}</div>)}{!teacherResults.length && <p className="text-sm text-slate-400">ستظهر محاولات الطلاب ونتائجهم هنا بعد بدء الامتحانات.</p>}</div></div>
             <div className="rounded-3xl border bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">الاختبارات التي أنشأتها</h3><div className="mt-5 grid gap-3 md:grid-cols-2">{quizzes.map(q => <div key={q.id} className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-3"><div><b>{q.title}</b><p className="mt-1 text-sm text-slate-500">{subjects.find(s => s.id === q.subject_id)?.name} • {q.duration_minutes} دقيقة</p></div><span className={"rounded-full px-3 py-1 text-xs font-bold " + (q.published ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{q.published ? "منشور" : "مسودة"}</span></div>{!q.published && <button className={primaryClass + " mt-4"} onClick={() => void publishQuiz(q.id)} disabled={busy}>نشر الامتحان</button>}</div>)}{!quizzes.length && <p className="text-sm text-slate-400">لم تنشئ اختبارات بعد.</p>}</div></div>
           </div>}
 
