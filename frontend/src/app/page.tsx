@@ -51,9 +51,30 @@ export default function Home() {
   function openAuth(mode: "login" | "register", selectedRole = role) {
     setRole(selectedRole); setAuthMessage(""); setAuthMode(mode); setMenuOpen(false);
   }
-  function submitAuth(event: FormEvent<HTMLFormElement>) {
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAuthMessage("تم استلام بيانات النموذج تجريبيًا. تسجيل الدخول وإنشاء الحسابات سيتم تفعليهما بعد ربط نظام المصادقة بالخادم.");
+    setAuthLoading(true);
+    setAuthMessage("");
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") || "").trim().toLowerCase();
+    const password = String(form.get("password") || "");
+    const fullName = String(form.get("fullName") || "").trim();
+    try {
+      if (authMode === "register") {
+        const result = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+        if (result.error) throw result.error;
+        if (!result.data.session) { setAuthMessage("تأكيد البريد الإلكتروني ما زال مفعّلًا في إعدادات Supabase."); return; }
+        setAuthUser({ email, name: fullName || email.split("@")[0], role: "STUDENT" });
+      } else {
+        const result = await supabase.auth.signInWithPassword({ email, password });
+        if (result.error) throw result.error;
+        const profile = await supabase.from("profiles").select("full_name,role").eq("id", result.data.user.id).maybeSingle();
+        setAuthUser({ email, name: profile.data?.full_name || email.split("@")[0], role: profile.data?.role || "STUDENT" });
+      }
+      setAuthMode(null);
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "تعذر إتمام تسجيل الدخول.");
+    } finally { setAuthLoading(false); }
   }
   function startDemo(index: number) {
     setSelectedExam(index); setQuestionIndex(0); setAnswers([]); setQuizFinished(false); setQuizOpen(true);
