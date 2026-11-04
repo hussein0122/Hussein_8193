@@ -1,16 +1,16 @@
 server:
-  port: ${PORT:8080}
+  port: \${PORT:8080}
 spring:
   application:
     name: exam-platform-api
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/exam_platform}
-    username: ${DATABASE_USERNAME:postgres}
-    password: ${DATABASE_PASSWORD:postgres}
+    url: \${DATABASE_URL}
+    username: \${DATABASE_USERNAME}
+    password: \${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate:
