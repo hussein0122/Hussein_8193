@@ -27,6 +27,9 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "register" | null>(null);
   const [authRole, setAuthRole] = useState<"STUDENT" | "TEACHER">("STUDENT");
   const [authError, setAuthError] = useState("");
+  const [forgotMode, setForgotMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [notice, setNotice] = useState("");
@@ -64,7 +67,13 @@ export default function Home() {
       }
       if (alive) setAuthLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        setForgotMode(false);
+        setAuthMode(null);
+        setAuthError("");
+      }
       if (!session) { setProfile(null); setSubjects([]); setQuizzes([]); setAttempts([]); }
     });
     return () => { alive = false; listener.subscription.unsubscribe(); };
@@ -157,6 +166,48 @@ export default function Home() {
       setAuthMode(null);
     } catch (e) { setAuthError(e instanceof Error ? e.message : "حدث خطأ أثناء تنفيذ الطلب."); }
     finally { setBusy(false); }
+  }
+
+  async function requestPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setAuthError("");
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("recoveryEmail") || "").trim().toLowerCase();
+    try {
+      const redirectTo = `${window.location.origin}/?reset-password=1`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+      setRecoveryEmail(email);
+      setForgotMode(false);
+      setNotice("لو البريد مسجل عندنا، هتوصلك رسالة فيها رابط إعادة تعيين كلمة المرور. افتح أحدث رسالة فقط.");
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "تعذر إرسال رابط الاستعادة.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveNewPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setAuthError("");
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("newPassword") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+    try {
+      if (password.length < 8) throw new Error("كلمة المرور يجب ألا تقل عن 8 أحرف.");
+      if (password !== confirmPassword) throw new Error("كلمتا المرور غير متطابقتين.");
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setRecoveryMode(false);
+      setAuthMode(null);
+      setNotice("تم تغيير كلمة المرور بنجاح. يمكنك متابعة استخدام حسابك.");
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "تعذر تغيير كلمة المرور.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function signOut() {
@@ -421,7 +472,11 @@ export default function Home() {
 
       <footer className="border-t bg-white px-5 py-8 text-center text-sm text-slate-500">© 2026 مِنصّة — منصة التعليم والاختبارات</footer>
 
-      {authMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}><div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-700"><LockKeyhole/></span><button onClick={() => setAuthMode(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">{authMode === "login" ? "تسجيل الدخول" : "إنشاء حساب"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">أدخل بياناتك للوصول إلى حسابك.</p>{authMode === "register" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setAuthRole("STUDENT")} className={"rounded-xl border p-3 font-bold " + (authRole === "STUDENT" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>طالب</button><button type="button" onClick={() => setAuthRole("TEACHER")} className={"rounded-xl border p-3 font-bold " + (authRole === "TEACHER" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>معلم</button></div>}<form onSubmit={handleAuth} className="mt-5 space-y-3">{authMode === "register" && <input className={inputClass} name="fullName" minLength={2} required placeholder="الاسم بالكامل"/>}<input className={inputClass} name="email" type="email" autoComplete="email" required placeholder="البريد الإلكتروني"/><input className={inputClass} name="password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={8} required placeholder="كلمة المرور (8 أحرف على الأقل)"/><button className={primaryClass + " w-full"} type="submit" disabled={busy}>{busy ? "جارٍ التنفيذ..." : authMode === "login" ? "دخول" : "إنشاء الحساب"}</button></form>{authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{authError}</p>}<button className="mt-5 w-full text-sm font-bold text-blue-700" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "ليس لديك حساب؟ أنشئ حسابًا" : "لديك حساب؟ سجل الدخول"}</button></div></div>}
+      {recoveryMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4"><div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-700"><LockKeyhole/></div><h2 className="mt-5 text-2xl font-black">تعيين كلمة مرور جديدة</h2><p className="mt-2 text-sm leading-6 text-slate-500">اكتب كلمة مرور جديدة لحسابك ثم أكدها.</p><form onSubmit={saveNewPassword} className="mt-5 space-y-3"><input className={inputClass} name="newPassword" type="password" autoComplete="new-password" minLength={8} required placeholder="كلمة المرور الجديدة"/><input className={inputClass} name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required placeholder="تأكيد كلمة المرور"/><button className={primaryClass + " w-full"} type="submit" disabled={busy}>{busy ? "جارٍ حفظ كلمة المرور..." : "حفظ كلمة المرور"}</button></form>{authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{authError}</p>}</div></div>}
+
+      {forgotMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4"><div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-700"><LockKeyhole/></span><button onClick={() => { setForgotMode(false); setAuthError(""); }} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">استعادة كلمة المرور</h2><p className="mt-2 text-sm leading-6 text-slate-500">اكتب بريدك الإلكتروني وسنرسل لك رابطًا آمنًا لإعادة تعيين كلمة المرور.</p><form onSubmit={requestPasswordReset} className="mt-5 space-y-3"><input className={inputClass} name="recoveryEmail" type="email" autoComplete="email" required defaultValue={recoveryEmail} placeholder="البريد الإلكتروني"/><button className={primaryClass + " w-full"} type="submit" disabled={busy}>{busy ? "جارٍ إرسال الرابط..." : "إرسال رابط الاستعادة"}</button></form>{authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{authError}</p>}<button className="mt-5 w-full text-sm font-bold text-blue-700" onClick={() => { setForgotMode(false); setAuthMode("login"); setAuthError(""); }}>العودة لتسجيل الدخول</button></div></div>}
+
+      {authMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}><div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-700"><LockKeyhole/></span><button onClick={() => setAuthMode(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">{authMode === "login" ? "تسجيل الدخول" : "إنشاء حساب"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">أدخل بياناتك للوصول إلى حسابك.</p>{authMode === "register" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setAuthRole("STUDENT")} className={"rounded-xl border p-3 font-bold " + (authRole === "STUDENT" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>طالب</button><button type="button" onClick={() => setAuthRole("TEACHER")} className={"rounded-xl border p-3 font-bold " + (authRole === "TEACHER" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>معلم</button></div>}<form onSubmit={handleAuth} className="mt-5 space-y-3">{authMode === "register" && <input className={inputClass} name="fullName" minLength={2} required placeholder="الاسم بالكامل"/>}<input className={inputClass} name="email" type="email" autoComplete="email" required placeholder="البريد الإلكتروني"/><input className={inputClass} name="password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={8} required placeholder="كلمة المرور (8 أحرف على الأقل)"/><button className={primaryClass + " w-full"} type="submit" disabled={busy}>{busy ? "جارٍ التنفيذ..." : authMode === "login" ? "دخول" : "إنشاء الحساب"}</button></form>{authMode === "login" && <button type="button" className="mt-4 w-full text-right text-sm font-bold text-blue-700" onClick={() => { setForgotMode(true); setAuthError(""); }}>نسيت كلمة المرور؟</button>}{authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{authError}</p>}<button className="mt-5 w-full text-sm font-bold text-blue-700" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "ليس لديك حساب؟ أنشئ حسابًا" : "لديك حساب؟ سجل الدخول"}</button></div></div>}
 
       {activeExam && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 p-3 sm:p-5"><div className="my-4 w-full max-w-2xl rounded-3xl bg-white p-5 shadow-2xl sm:p-8">
         <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-blue-700">امتحان إلكتروني</p><h2 className="mt-1 text-xl font-black sm:text-2xl">{activeExam.quiz.title}</h2></div><div className="rounded-xl bg-blue-50 px-3 py-2 text-lg font-black text-blue-800"><Clock3 className="ml-1 inline" size={17}/>{timeLabel}</div></div>
