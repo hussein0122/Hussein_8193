@@ -1,258 +1,414 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  ArrowLeft, BarChart3, BookOpen, CheckCircle2, Clock3, GraduationCap,
-  Menu, ShieldCheck, Sparkles, Users, X, ClipboardList, Play, LockKeyhole,
-  ChevronDown, CircleHelp, Mail, UserRound, Timer, Award
+  GraduationCap, BookOpen, ClipboardList, Users, ShieldCheck, LogOut,
+  Menu, X, Plus, Play, CheckCircle2, Clock3, AlertTriangle, LockKeyhole,
+  BarChart3, RefreshCw, Send, Trash2, ChevronLeft, Award, FileText
 } from "lucide-react";
 
-const exams = [
-  { subject: "الرياضيات", title: "اختبار التفاضل والتكامل", grade: "الصف الثالث الثانوي", time: "45 دقيقة", questions: 20, color: "blue", description: "مراجعة على النهايات والاشتقاق والتكامل." },
-  { subject: "الفيزياء", title: "اختبار الحركة والطاقة", grade: "الصف الثاني الثانوي", time: "30 دقيقة", questions: 15, color: "violet", description: "أسئلة على قوانين الحركة والطاقة." },
-  { subject: "اللغة العربية", title: "اختبار القراءة والنحو", grade: "الصف الأول الثانوي", time: "35 دقيقة", questions: 18, color: "green", description: "تدريب على الفهم القرائي والقواعد." }
-];
+type Role = "STUDENT" | "TEACHER" | "ADMIN";
+type Profile = { id: string; email: string; name: string; role: Role };
+type Subject = { id: string; name: string; description?: string | null };
+type Quiz = { id: string; title: string; description: string | null; duration_minutes: number; published: boolean; subject_id: string; created_at?: string; subjects?: { name: string } | null };
+type Option = { id: string; body: string; sort_order: number };
+type Question = { id: string; body: string; points: number; sort_order: number; options: Option[] };
+type Attempt = { id: string; exam_id: string; status: string; strikes: number; score: number | null; started_at: string; submitted_at: string | null; quizzes?: { title: string } | null };
+type ActiveExam = { id: string; quiz: Quiz; questions: Question[]; index: number; selected: Record<string,string>; strikes: number; secondsLeft: number; locked: boolean; result: number | null };
 
-const demoQuestions = [
-  { q: "ما ناتج مشتقة الدالة س²؟", choices: ["س", "٢س", "س²", "٢"], correct: 1 },
-  { q: "ما وحدة قياس القوة؟", choices: ["الجول", "الواط", "النيوتن", "الأمبير"], correct: 2 },
-  { q: "أي الكلمات التالية فعل؟", choices: ["مدرسة", "يكتب", "قلم", "جميل"], correct: 1 }
-];
+const inputClass = "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+const primaryClass = "inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50";
+const secondaryClass = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50";
 
 export default function Home() {
-  const [role, setRole] = useState<"student" | "teacher">("student");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "register" | null>(null);
-  const [authMessage, setAuthMessage] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string; role: string } | null>(null);
-  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([]);
+  const [authRole, setAuthRole] = useState<"STUDENT" | "TEACHER">("STUDENT");
+  const [authError, setAuthError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [teacherRequests, setTeacherRequests] = useState<any[]>([]);
-  const [teacherQuizzes, setTeacherQuizzes] = useState<any[]>([]);
-  const [teacherBusy, setTeacherBusy] = useState(false);
-  const [teacherMessage, setTeacherMessage] = useState("");
-  const [newSubject, setNewSubject] = useState("");
-  const [newQuiz, setNewQuiz] = useState({ title: "", description: "", subjectId: "", duration: 30 });
-  const [newQuestion, setNewQuestion] = useState({ quizId: "", body: "", options: "", correct: "1", points: 1 });
-  const [selectedExam, setSelectedExam] = useState<number | null>(null);
-  const [quizOpen, setQuizOpen] = useState(false);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [quizFinished, setQuizFinished] = useState(false);
-  const [quizStrikes, setQuizStrikes] = useState(0);
-  const [quizLocked, setQuizLocked] = useState(false);
-  const [integrityNotice, setIntegrityNotice] = useState("");
-  const fullscreenWasActive = useRef(false);
-  const lastIntegrityEventAt = useRef(0);
-  const [faqOpen, setFaqOpen] = useState<number | null>(0);
+  const [teacherStatus, setTeacherStatus] = useState<string | null>(null);
+  const [subjectName, setSubjectName] = useState("");
+  const [subjectDescription, setSubjectDescription] = useState("");
+  const [quizForm, setQuizForm] = useState({ title: "", description: "", subject_id: "", duration_minutes: 30 });
+  const [questionForm, setQuestionForm] = useState({ quiz_id: "", body: "", options: "", correct: "1", points: "1" });
+  const [activeExam, setActiveExam] = useState<ActiveExam | null>(null);
+  const [integrityMessage, setIntegrityMessage] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const violationLock = useRef(false);
+  const lastViolationAt = useRef(0);
+
+  const refreshProfile = useCallback(async (userId: string, email: string) => {
+    const { data, error } = await supabase.from("profiles").select("id,full_name,role").eq("id", userId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("لم يتم إنشاء ملف الحساب. تواصل مع إدارة المنصة.");
+    setProfile({ id: data.id, email, name: data.full_name || email.split("@")[0], role: data.role as Role });
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!alive || !data.session?.user) return;
-      const user = data.session.user;
-      const { data: profile } = await supabase.from("profiles").select("full_name,role").eq("id", user.id).maybeSingle();
-      if (alive) setAuthUser({ id: user.id, email: user.email ?? "", name: profile?.full_name ?? user.email?.split("@")[0] ?? "مستخدم", role: profile?.role ?? "STUDENT" });
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!alive) return;
+      if (error) setNotice("تعذر استعادة جلسة الدخول.");
+      if (data.session?.user) {
+        try { await refreshProfile(data.session.user.id, data.session.user.email || ""); }
+        catch (e) { setNotice(e instanceof Error ? e.message : "تعذر تحميل الحساب."); }
+      }
+      if (alive) setAuthLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) setAuthUser(null);
+      if (!session) { setProfile(null); setSubjects([]); setQuizzes([]); setAttempts([]); }
     });
     return () => { alive = false; listener.subscription.unsubscribe(); };
-  }, []);
-  useEffect(() => {
-    if (!quizOpen || quizFinished || quizLocked) return;
-    const registerViolation = (reason: string) => {
-      const now = Date.now();
-      if (now - lastIntegrityEventAt.current < 1800) return;
-      lastIntegrityEventAt.current = now;
-      setQuizStrikes(current => {
-        const next = Math.min(current + 1, 3);
-        if (next >= 3) { setQuizLocked(true); setQuizFinished(true); setIntegrityNotice("تم إغلاق الامتحان نهائيًا بعد تسجيل 3 مخالفات."); }
-        else setIntegrityNotice(`تنبيه رقم ${next} من 3: ${reason}. ارجع للامتحان ولا تكرر مغادرة الصفحة.`);
-        return next;
-      });
-    };
-    const onVisibility = () => { if (document.visibilityState === "hidden") registerViolation("تم اكتشاف مغادرة صفحة الامتحان"); };
-    const onFullscreen = () => { if (fullscreenWasActive.current && !document.fullscreenElement) { fullscreenWasActive.current = false; registerViolation("تم اكتشاف الخروج من وضع ملء الشاشة"); } };
-    document.addEventListener("visibilitychange", onVisibility);
-    document.addEventListener("fullscreenchange", onFullscreen);
-    return () => { document.removeEventListener("visibilitychange", onVisibility); document.removeEventListener("fullscreenchange", onFullscreen); };
-  }, [quizOpen, quizFinished, quizLocked]);
-  useEffect(() => {
-    if (!authUser || authUser.role !== "TEACHER") return;
-    let active = true;
-    (async () => {
-      const { data: subjects } = await supabase.from("subjects").select("id,name,description").eq("teacher_id", authUser.id).order("created_at", { ascending: false });
-      if (!active) return;
-      setTeacherSubjects(subjects ?? []);
-      const { data: quizzes } = await supabase.from("quizzes").select("id,title,description,duration_minutes,published,subject_id").in("subject_id", (subjects ?? []).map((x:any)=>x.id).length ? (subjects ?? []).map((x:any)=>x.id) : ["00000000-0000-0000-0000-000000000000"]).order("created_at", { ascending: false });
-      if (active) setTeacherQuizzes(quizzes ?? []);
-    })();
-    return () => { active = false; };
-  }, [authUser?.id, authUser?.role]);
-  async function createSubject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!authUser) return; setTeacherBusy(true); setTeacherMessage("");
-    const { data, error } = await supabase.from("subjects").insert({ name: newSubject.trim(), teacher_id: authUser.id }).select("id,name").single();
-    if (error) setTeacherMessage(error.message); else { setTeacherSubjects(old=>[data,...old]); setNewSubject(""); setTeacherMessage("تم إنشاء المادة بنجاح."); }
-    setTeacherBusy(false);
-  }
-  async function createQuiz(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setTeacherBusy(true); setTeacherMessage("");
-    const { data, error } = await supabase.from("quizzes").insert({ title:newQuiz.title.trim(), description:newQuiz.description.trim(), subject_id:newQuiz.subjectId, duration_minutes:newQuiz.duration, created_by:authUser?.id, published:false }).select("id,title,description,duration_minutes,published,subject_id").single();
-    if (error) setTeacherMessage(error.message); else { setTeacherQuizzes(old=>[data,...old]); setNewQuestion(old=>({...old,quizId:data.id})); setNewQuiz({title:"",description:"",subjectId:"",duration:30}); setTeacherMessage("تم إنشاء الامتحان كمسودة. أضف الأسئلة ثم انشره."); }
-    setTeacherBusy(false);
-  }
-  async function addQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setTeacherBusy(true); setTeacherMessage("");
-    const options = newQuestion.options.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-    const correct = Number(newQuestion.correct)-1;
-    if (options.length < 2 || correct < 0 || correct >= options.length) { setTeacherMessage("أدخل اختيارين على الأقل وحدد رقم الإجابة الصحيحة."); setTeacherBusy(false); return; }
-    const { data: question, error } = await supabase.from("questions").insert({ quiz_id:newQuestion.quizId, body:newQuestion.body.trim(), question_type:"MCQ", points:newQuestion.points }).select("id").single();
-    if (error) { setTeacherMessage(error.message); setTeacherBusy(false); return; }
-    const rows = options.map((body,i)=>({ question_id:question.id, body, is_correct:i===correct, sort_order:i }));
-    const inserted = await supabase.from("options").insert(rows);
-    if (inserted.error) setTeacherMessage(inserted.error.message); else { setTeacherMessage("تمت إضافة السؤال والاختيارات."); setNewQuestion(old=>({...old,body:"",options:""})); }
-    setTeacherBusy(false);
-  }
-  async function publishQuiz(id: string) {
-    setTeacherBusy(true); const { count, error: countError } = await supabase.from("questions").select("id",{count:"exact",head:true}).eq("quiz_id",id);
-    if (countError || !count) { setTeacherMessage("أضف سؤالًا واحدًا على الأقل قبل النشر."); setTeacherBusy(false); return; }
-    const { error } = await supabase.from("quizzes").update({published:true}).eq("id",id);
-    setTeacherMessage(error ? error.message : "تم نشر الامتحان وإتاحته للطلاب."); if (!error) setTeacherQuizzes(old=>old.map(q=>q.id===id?{...q,published:true}:q)); setTeacherBusy(false);
-  }
+  }, [refreshProfile]);
 
-  useEffect(() => {
-    if (!authUser || authUser.role !== "ADMIN") return;
-    let active = true;
-    supabase.from("teacher_requests").select("id,user_id,note,status,created_at,profiles(full_name,email)").eq("status","PENDING").order("created_at",{ascending:false}).then(({data})=>{if(active)setTeacherRequests(data??[]);});
-    return ()=>{active=false;};
-  }, [authUser?.id,authUser?.role]);
-  async function reviewTeacherRequest(id:string, approve:boolean) {
-    const {error}=await supabase.rpc("approve_teacher_request",{request_id:id,approve});
-    if(error) setTeacherMessage(error.message); else {setTeacherRequests(old=>old.filter(x=>x.id!==id));setTeacherMessage(approve?"تم اعتماد حساب المعلم.":"تم رفض طلب المعلم.");}
-  }
-  const score = useMemo(() => answers.reduce((sum, answer, i) => sum + (answer === demoQuestions[i]?.correct ? 1 : 0), 0), [answers]);
+  const loadWorkspace = useCallback(async () => {
+    if (!profile) return;
+    setHistoryLoading(true);
+    try {
+      if (profile.role === "TEACHER") {
+        const { data: subjectRows, error: subjectError } = await supabase.from("subjects").select("id,name,description").eq("teacher_id", profile.id).order("created_at", { ascending: false });
+        if (subjectError) throw subjectError;
+        const ownedSubjects = (subjectRows || []) as Subject[];
+        setSubjects(ownedSubjects);
+        if (ownedSubjects.length) {
+          const { data: quizRows, error: quizError } = await supabase.from("quizzes").select("id,title,description,duration_minutes,published,subject_id,created_at").in("subject_id", ownedSubjects.map(x => x.id)).order("created_at", { ascending: false });
+          if (quizError) throw quizError;
+          setQuizzes((quizRows || []) as Quiz[]);
+        } else setQuizzes([]);
+      } else if (profile.role === "STUDENT") {
+        const [quizResult, attemptResult, requestResult] = await Promise.all([
+          supabase.from("quizzes").select("id,title,description,duration_minutes,published,subject_id,created_at,subjects(name)").eq("published", true).order("created_at", { ascending: false }),
+          supabase.from("exam_attempts").select("id,exam_id,status,strikes,score,started_at,submitted_at,quizzes(title)").eq("student_id", profile.id).order("started_at", { ascending: false }),
+          supabase.from("teacher_requests").select("status").eq("user_id", profile.id).maybeSingle()
+        ]);
+        if (quizResult.error) throw quizResult.error;
+        if (attemptResult.error) throw attemptResult.error;
+        setQuizzes((quizResult.data || []) as unknown as Quiz[]);
+        setAttempts((attemptResult.data || []) as unknown as Attempt[]);
+        setTeacherStatus(requestResult.data?.status || null);
+      } else {
+        const { data, error } = await supabase.from("teacher_requests").select("id,user_id,note,status,created_at").eq("status", "PENDING").order("created_at", { ascending: false });
+        if (error) throw error;
+        const rows = data || [];
+        if (rows.length) {
+          const ids = rows.map((x: any) => x.user_id);
+          const { data: users } = await supabase.from("profiles").select("id,full_name,email").in("id", ids);
+          const lookup = new Map((users || []).map((x: any) => [x.id, x]));
+          setTeacherRequests(rows.map((x: any) => ({ ...x, profile: lookup.get(x.user_id) })));
+        } else setTeacherRequests([]);
+      }
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "تعذر تحميل بيانات الحساب.");
+    } finally { setHistoryLoading(false); }
+  }, [profile]);
 
-  function openAuth(mode: "login" | "register", selectedRole = role) {
-    setRole(selectedRole); setAuthMessage(""); setAuthMode(mode); setMenuOpen(false);
-  }
-  async function submitAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAuthLoading(true);
-    setAuthMessage("");
+  useEffect(() => { void loadWorkspace(); }, [loadWorkspace]);
+
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setAuthError("");
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") || "").trim().toLowerCase();
     const password = String(form.get("password") || "");
     const fullName = String(form.get("fullName") || "").trim();
     try {
       if (authMode === "register") {
-        const result = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
-        if (result.error) throw result.error;
-        if (!result.data.session) { setAuthMessage("تأكيد البريد الإلكتروني ما زال مفعّلًا في إعدادات Supabase."); return; }
-        setAuthUser({ id: result.data.user!.id, email, name: fullName || email.split("@")[0], role: "STUDENT" });
-        if (role === "teacher") {
-          const request = await supabase.from("teacher_requests").upsert({ user_id: result.data.user!.id, note: "طلب تفعيل حساب معلم" }, { onConflict: "user_id" });
-          if (request.error) throw request.error;
-          setTeacherMessage("تم إنشاء حسابك واستلام طلب تفعيل المعلم. ستظهر أدوات إنشاء الامتحانات بعد اعتماد الإدارة.");
-        }
+        if (fullName.length < 2) throw new Error("اكتب الاسم بالكامل.");
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+        if (error) throw error;
+        if (!data.user) throw new Error("تعذر إنشاء الحساب.");
+        if (!data.session) throw new Error("تم إنشاء الحساب، لكن إعداد تأكيد البريد يمنع الدخول الفوري. راجع إعدادات البريد أو سجل الدخول بعد التأكيد.");
+        await refreshProfile(data.user.id, email);
+        if (authRole === "TEACHER") {
+          const { error: requestError } = await supabase.from("teacher_requests").upsert({ user_id: data.user.id, note: "طلب تفعيل حساب معلم" }, { onConflict: "user_id" });
+          if (requestError) throw requestError;
+          setNotice("تم إنشاء الحساب. أرسلنا طلب اعتماد المعلم إلى الإدارة.");
+        } else setNotice("تم إنشاء حسابك بنجاح.");
       } else {
-        const result = await supabase.auth.signInWithPassword({ email, password });
-        if (result.error) throw result.error;
-        const profile = await supabase.from("profiles").select("full_name,role").eq("id", result.data.user!.id).maybeSingle();
-        setAuthUser({ id: result.data.user!.id, email, name: profile.data?.full_name || email.split("@")[0], role: profile.data?.role || "STUDENT" });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await refreshProfile(data.user.id, email);
+        setNotice("تم تسجيل الدخول بنجاح.");
       }
       setAuthMode(null);
-    } catch (error) {
-      setAuthMessage(error instanceof Error ? error.message : "تعذر إتمام تسجيل الدخول.");
-    } finally { setAuthLoading(false); }
+    } catch (e) { setAuthError(e instanceof Error ? e.message : "حدث خطأ أثناء تنفيذ الطلب."); }
+    finally { setBusy(false); }
   }
-  async function startDemo(index: number) {
-    setSelectedExam(index); setQuestionIndex(0); setAnswers([]); setQuizFinished(false); setQuizLocked(false); setQuizStrikes(0); setIntegrityNotice(""); lastIntegrityEventAt.current = 0; fullscreenWasActive.current = false; setQuizOpen(true);
-    try { if (document.documentElement.requestFullscreen) { await document.documentElement.requestFullscreen(); fullscreenWasActive.current = Boolean(document.fullscreenElement); } } catch { fullscreenWasActive.current = false; }
-  }
-  function chooseAnswer(index: number) {
-    setAnswers(prev => { const next = [...prev]; next[questionIndex] = index; return next; });
-  }
-  function nextQuestion() {
-    if (questionIndex < demoQuestions.length - 1) setQuestionIndex(i => i + 1);
-    else setQuizFinished(true);
-  }
-  function closeQuiz() { setQuizOpen(false); setSelectedExam(null); fullscreenWasActive.current = false; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
 
-  return <main className="min-h-screen overflow-hidden">
-    <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-        <a href="#home" className="flex items-center gap-3" aria-label="العودة للرئيسية">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand text-white shadow-soft"><GraduationCap size={25}/></span>
-          <span><b className="block text-lg">مِنصّة</b><small className="text-xs text-slate-500">تعلم • اختبر • تطوّر</small></span>
-        </a>
-        <nav className="hidden items-center gap-7 text-sm text-slate-600 md:flex">
-          <a href="#features" className="hover:text-brand">المميزات</a><a href="#exams" className="hover:text-brand">الامتحانات</a><a href="#how" className="hover:text-brand">كيف تعمل</a><a href="#faq" className="hover:text-brand">الأسئلة الشائعة</a>
-        </nav>
-        <div className="hidden items-center gap-2 md:flex">
-          {authUser ? <><span className="text-sm font-bold text-slate-600">أهلاً، {authUser.name}</span><a href="#dashboard" className="rounded-xl bg-blue-50 px-4 py-2.5 text-sm font-bold text-brand">لوحة التحكم</a><button onClick={async()=>{await supabase.auth.signOut();setAuthUser(null);}} className="rounded-xl border px-4 py-2.5 text-sm font-bold">خروج</button></> : <><button onClick={() => openAuth("login")} className="rounded-xl px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">دخول</button><button onClick={() => openAuth("register")} className="rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white shadow-soft hover:bg-blue-700">إنشاء حساب <ArrowLeft className="mr-2 inline" size={16}/></button></>}
+  async function signOut() {
+    await supabase.auth.signOut();
+    setProfile(null); setActiveExam(null); setNotice("تم تسجيل الخروج.");
+  }
+
+  async function createSubject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!profile) return; setBusy(true); setNotice("");
+    try {
+      const { data, error } = await supabase.from("subjects").insert({ name: subjectName.trim(), description: subjectDescription.trim() || null, teacher_id: profile.id }).select("id,name,description").single();
+      if (error) throw error;
+      setSubjects(old => [data as Subject, ...old]); setSubjectName(""); setSubjectDescription(""); setNotice("تم إنشاء المادة.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "تعذر إنشاء المادة."); }
+    finally { setBusy(false); }
+  }
+
+  async function createQuiz(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setNotice("");
+    try {
+      if (!quizForm.subject_id) throw new Error("اختر المادة أولًا.");
+      const { data, error } = await supabase.from("quizzes").insert({
+        title: quizForm.title.trim(), description: quizForm.description.trim() || null,
+        subject_id: quizForm.subject_id, duration_minutes: quizForm.duration_minutes,
+        created_by: profile?.id, published: false
+      }).select("id,title,description,duration_minutes,published,subject_id,created_at").single();
+      if (error) throw error;
+      setQuizzes(old => [data as Quiz, ...old]); setQuestionForm(old => ({ ...old, quiz_id: data.id }));
+      setQuizForm({ title: "", description: "", subject_id: "", duration_minutes: 30 });
+      setNotice("تم حفظ الامتحان كمسودة. أضف الأسئلة ثم انشره.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "تعذر إنشاء الامتحان."); }
+    finally { setBusy(false); }
+  }
+
+  async function addQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setNotice("");
+    try {
+      const options = questionForm.options.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      const correct = Number(questionForm.correct) - 1;
+      if (options.length < 2 || correct < 0 || correct >= options.length) throw new Error("أدخل اختيارين على الأقل وحدد رقم الإجابة الصحيحة بشكل صحيح.");
+      const { data: existing } = await supabase.from("questions").select("id").eq("quiz_id", questionForm.quiz_id);
+      const { data: question, error } = await supabase.from("questions").insert({
+        quiz_id: questionForm.quiz_id, body: questionForm.body.trim(), question_type: "MCQ",
+        points: Number(questionForm.points), sort_order: existing?.length || 0
+      }).select("id").single();
+      if (error) throw error;
+      const { error: optionError } = await supabase.from("options").insert(options.map((body, i) => ({
+        question_id: question.id, body, is_correct: i === correct, sort_order: i
+      })));
+      if (optionError) {
+        await supabase.from("questions").delete().eq("id", question.id);
+        throw optionError;
+      }
+      setQuestionForm(old => ({ ...old, body: "", options: "" }));
+      setNotice("تم حفظ السؤال والاختيارات.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "تعذر حفظ السؤال."); }
+    finally { setBusy(false); }
+  }
+
+  async function publishQuiz(id: string) {
+    setBusy(true); setNotice("");
+    try {
+      const { count, error: countError } = await supabase.from("questions").select("id", { count: "exact", head: true }).eq("quiz_id", id);
+      if (countError) throw countError;
+      if (!count) throw new Error("لا يمكن نشر امتحان بدون أسئلة.");
+      const { error } = await supabase.from("quizzes").update({ published: true }).eq("id", id);
+      if (error) throw error;
+      setQuizzes(old => old.map(q => q.id === id ? { ...q, published: true } : q));
+      setNotice("تم نشر الامتحان وأصبح متاحًا للطلاب.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "تعذر نشر الامتحان."); }
+    finally { setBusy(false); }
+  }
+
+  async function startExam(quiz: Quiz) {
+    if (!profile || profile.role !== "STUDENT") return;
+    setBusy(true); setNotice(""); violationLock.current = false; lastViolationAt.current = 0;
+    try {
+      const { data: attemptId, error: startError } = await supabase.rpc("start_exam", { exam_id: quiz.id });
+      if (startError) throw startError;
+      const { data: rows, error: questionError } = await supabase.from("questions").select("id,body,points,sort_order").eq("quiz_id", quiz.id).order("sort_order");
+      if (questionError) throw questionError;
+      if (!rows?.length) throw new Error("هذا الامتحان لا يحتوي على أسئلة.");
+      const questionIds = rows.map((x: any) => x.id);
+      const { data: optionRows, error: optionError } = await supabase.from("options").select("id,question_id,body,sort_order").in("question_id", questionIds).order("sort_order");
+      if (optionError) throw optionError;
+      const questions: Question[] = rows.map((q: any) => ({
+        id: q.id, body: q.body, points: Number(q.points), sort_order: q.sort_order,
+        options: (optionRows || []).filter((o: any) => o.question_id === q.id).map((o: any) => ({ id: o.id, body: o.body, sort_order: o.sort_order }))
+      }));
+      setActiveExam({ id: attemptId as string, quiz, questions, index: 0, selected: {}, strikes: 0, secondsLeft: quiz.duration_minutes * 60, locked: false, result: null });
+      try { await document.documentElement.requestFullscreen?.(); } catch { /* Fullscreen is optional on unsupported mobile browsers. */ }
+    } catch (e) { setNotice(e instanceof Error ? e.message : "تعذر بدء الامتحان."); }
+    finally { setBusy(false); }
+  }
+
+  const finishExam = useCallback(async (locked = false) => {
+    if (!activeExam) return;
+    if (locked) {
+      setActiveExam(old => old ? { ...old, locked: true } : old);
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("submit_exam", { attempt_id: activeExam.id });
+      if (error) throw error;
+      setActiveExam(old => old ? { ...old, result: Number(data), secondsLeft: 0 } : old);
+      await loadWorkspace();
+    } catch (e) { setIntegrityMessage(e instanceof Error ? e.message : "تعذر تسليم الامتحان."); }
+    finally { setBusy(false); }
+  }, [activeExam, loadWorkspace]);
+
+  const reportViolation = useCallback(async (eventType: "TAB_HIDDEN" | "FULLSCREEN_EXIT" | "WINDOW_BLUR") => {
+    if (!activeExam || activeExam.result !== null || activeExam.locked || violationLock.current) return;
+    const now = Date.now();
+    if (now - lastViolationAt.current < 1800) return;
+    lastViolationAt.current = now;
+    try {
+      const { data, error } = await supabase.rpc("register_integrity_violation", { attempt_id: activeExam.id, event_type: eventType });
+      if (error) throw error;
+      const next = Number(data.strikes || 0);
+      setActiveExam(old => old ? { ...old, strikes: next, locked: Boolean(data.locked) } : old);
+      if (data.locked) {
+        violationLock.current = true;
+        setIntegrityMessage("تم قفل المحاولة بعد تسجيل ثلاث مخالفات. لن يمكن استكمال هذا الامتحان.");
+      } else {
+        setIntegrityMessage("تنبيه " + next + " من 3: تم تسجيل مغادرة شاشة الامتحان. العودة للامتحان مطلوبة.");
+      }
+    } catch (e) { setIntegrityMessage(e instanceof Error ? e.message : "تعذر تسجيل مخالفة النزاهة."); }
+  }, [activeExam]);
+
+  useEffect(() => {
+    if (!activeExam || activeExam.result !== null || activeExam.locked) return;
+    const timer = window.setInterval(() => {
+      setActiveExam(old => {
+        if (!old || old.result !== null || old.locked) return old;
+        if (old.secondsLeft <= 1) {
+          window.setTimeout(() => void finishExam(false), 0);
+          return { ...old, secondsLeft: 0 };
+        }
+        return { ...old, secondsLeft: old.secondsLeft - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeExam?.id, activeExam?.result, activeExam?.locked, finishExam]);
+
+  useEffect(() => {
+    if (!activeExam || activeExam.result !== null || activeExam.locked) return;
+    const hidden = () => { if (document.visibilityState === "hidden") void reportViolation("TAB_HIDDEN"); };
+    const fullscreen = () => { if (!document.fullscreenElement) void reportViolation("FULLSCREEN_EXIT"); };
+    document.addEventListener("visibilitychange", hidden);
+    document.addEventListener("fullscreenchange", fullscreen);
+    return () => { document.removeEventListener("visibilitychange", hidden); document.removeEventListener("fullscreenchange", fullscreen); };
+  }, [activeExam?.id, activeExam?.result, activeExam?.locked, reportViolation]);
+
+  async function chooseOption(optionId: string) {
+    if (!activeExam || activeExam.locked) return;
+    const q = activeExam.questions[activeExam.index];
+    const { error } = await supabase.rpc("save_mcq_answer", { attempt_id: activeExam.id, question_id: q.id, option_id: optionId });
+    if (error) { setIntegrityMessage(error.message); return; }
+    setActiveExam(old => old ? { ...old, selected: { ...old.selected, [q.id]: optionId } } : old);
+  }
+
+  async function reviewTeacher(id: string, approve: boolean) {
+    setBusy(true);
+    const { error } = await supabase.rpc("approve_teacher_request", { request_id: id, approve });
+    if (error) setNotice(error.message);
+    else { setTeacherRequests(old => old.filter(x => x.id !== id)); setNotice(approve ? "تم اعتماد المعلم." : "تم رفض الطلب."); }
+    setBusy(false);
+  }
+
+  const completedCount = useMemo(() => attempts.filter(a => a.status === "SUBMITTED").length, [attempts]);
+  const currentQuestion = activeExam?.questions[activeExam.index];
+  const timeLabel = activeExam ? Math.floor(activeExam.secondsLeft / 60).toString().padStart(2, "0") + ":" + (activeExam.secondsLeft % 60).toString().padStart(2, "0") : "";
+
+  return (
+    <main className="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <a href="#home" className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-700 text-white"><GraduationCap size={25}/></span>
+            <span><b className="block text-lg">مِنصّة</b><small className="text-xs text-slate-500">التعليم والاختبارات</small></span>
+          </a>
+          <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex">
+            <a href="#home" className="hover:text-blue-700">الرئيسية</a>
+            {profile && <a href="#dashboard" className="hover:text-blue-700">لوحة التحكم</a>}
+            <a href="#available-exams" className="hover:text-blue-700">الامتحانات</a>
+          </nav>
+          <div className="hidden items-center gap-3 md:flex">
+            {profile ? <><span className="text-sm font-bold">مرحبًا، {profile.name}</span><button className={secondaryClass} onClick={signOut}><LogOut size={17}/> خروج</button></> :
+              <><button className={secondaryClass} onClick={() => { setAuthMode("login"); setAuthError(""); }}>دخول</button><button className={primaryClass} onClick={() => { setAuthMode("register"); setAuthError(""); }}>إنشاء حساب</button></>}
+          </div>
+          <button className="rounded-xl border p-2 md:hidden" onClick={() => setMobileMenu(v => !v)} aria-label="القائمة">{mobileMenu ? <X/> : <Menu/>}</button>
         </div>
-        <button className="rounded-xl bg-slate-50 p-2 md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="فتح القائمة">{menuOpen ? <X/> : <Menu/>}</button>
-      </div>
-      {menuOpen && <nav className="grid gap-1 border-t border-slate-100 bg-white p-4 md:hidden">
-        {["features","exams","how","faq"].map((id,i)=><a key={id} onClick={()=>setMenuOpen(false)} className="rounded-xl p-3 hover:bg-slate-50" href={`#${id}`}>{["المميزات","الامتحانات","كيف تعمل","الأسئلة الشائعة"][i]}</a>)}
-        <button onClick={()=>openAuth("login")} className="mt-2 rounded-xl border p-3 font-bold">تسجيل الدخول</button>
-        <button onClick={()=>openAuth("register")} className="rounded-xl bg-brand p-3 font-bold text-white">إنشاء حساب</button>
-      </nav>}
-    </header>
+        {mobileMenu && <div className="grid gap-2 border-t bg-white p-4 md:hidden">
+          <a href="#home" onClick={() => setMobileMenu(false)} className="rounded-lg p-3">الرئيسية</a>
+          <a href="#available-exams" onClick={() => setMobileMenu(false)} className="rounded-lg p-3">الامتحانات</a>
+          {profile ? <><a href="#dashboard" onClick={() => setMobileMenu(false)} className="rounded-lg bg-blue-50 p-3 font-bold text-blue-800">لوحة التحكم</a><button className={secondaryClass} onClick={signOut}><LogOut size={17}/> تسجيل الخروج</button></> :
+            <><button className={secondaryClass} onClick={() => { setAuthMode("login"); setMobileMenu(false); }}>تسجيل الدخول</button><button className={primaryClass} onClick={() => { setAuthMode("register"); setMobileMenu(false); }}>إنشاء حساب</button></>}
+        </div>}
+      </header>
 
-    {authUser && <section id="dashboard" className="scroll-mt-24 bg-blue-50 py-14"><div className="mx-auto max-w-7xl px-5 lg:px-8"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="font-bold text-brand">لوحة التحكم</p><h2 className="mt-2 text-3xl font-black">أهلاً {authUser.name}</h2><p className="mt-2 text-slate-600">{authUser.role==="TEACHER"?"إدارة المواد والامتحانات والأسئلة":"حساب الطالب — تصفح الامتحانات المتاحة"}</p></div><span className="rounded-full bg-white px-4 py-2 text-sm font-bold">{authUser.role==="TEACHER"?"معلم معتمد":"طالب"}</span></div>
-      {authUser.role==="ADMIN" ? <div className="mt-8 rounded-3xl bg-white p-6"><h3 className="text-xl font-black">طلبات اعتماد المعلمين</h3>{teacherRequests.length?teacherRequests.map(req=><div key={req.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4"><div><b>{req.profiles?.full_name||"معلم جديد"}</b><p className="text-sm text-slate-500">{req.profiles?.email}</p></div><div className="flex gap-2"><button onClick={()=>reviewTeacherRequest(req.id,true)} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white">اعتماد</button><button onClick={()=>reviewTeacherRequest(req.id,false)} className="rounded-xl border px-4 py-2 text-sm font-bold">رفض</button></div></div>):<p className="mt-3 text-slate-500">لا توجد طلبات معلقة.</p>}</div> : authUser.role==="TEACHER" ? <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-3xl bg-white p-6 shadow-sm"><h3 className="text-xl font-black">إنشاء مادة</h3><form onSubmit={createSubject} className="mt-4 flex gap-2"><input required value={newSubject} onChange={e=>setNewSubject(e.target.value)} placeholder="اسم المادة" className="min-w-0 flex-1 rounded-xl border p-3"/><button disabled={teacherBusy} className="rounded-xl bg-brand px-5 font-bold text-white">إضافة</button></form><div className="mt-4 space-y-2">{teacherSubjects.map(sub=><div key={sub.id} className="rounded-xl bg-slate-50 p-3 font-bold">{sub.name}</div>)}</div></div>
-        <div className="rounded-3xl bg-white p-6 shadow-sm"><h3 className="text-xl font-black">إنشاء امتحان</h3><form onSubmit={createQuiz} className="mt-4 space-y-3"><input required value={newQuiz.title} onChange={e=>setNewQuiz({...newQuiz,title:e.target.value})} placeholder="عنوان الامتحان" className="w-full rounded-xl border p-3"/><textarea value={newQuiz.description} onChange={e=>setNewQuiz({...newQuiz,description:e.target.value})} placeholder="وصف الامتحان" className="w-full rounded-xl border p-3"/><select required value={newQuiz.subjectId} onChange={e=>setNewQuiz({...newQuiz,subjectId:e.target.value})} className="w-full rounded-xl border p-3"><option value="">اختر المادة</option>{teacherSubjects.map(sub=><option key={sub.id} value={sub.id}>{sub.name}</option>)}</select><label className="block text-sm">مدة الامتحان بالدقائق<input type="number" min="1" max="300" value={newQuiz.duration} onChange={e=>setNewQuiz({...newQuiz,duration:Number(e.target.value)})} className="mt-1 w-full rounded-xl border p-3"/></label><button disabled={teacherBusy||!teacherSubjects.length} className="w-full rounded-xl bg-brand p-3 font-bold text-white disabled:opacity-50">حفظ كمسودة</button></form></div>
-        <div className="rounded-3xl bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">إضافة سؤال اختيار من متعدد</h3><form onSubmit={addQuestion} className="mt-4 grid gap-3 md:grid-cols-2"><select required value={newQuestion.quizId} onChange={e=>setNewQuestion({...newQuestion,quizId:e.target.value})} className="rounded-xl border p-3"><option value="">اختر الامتحان</option>{teacherQuizzes.map(q=><option key={q.id} value={q.id}>{q.title}</option>)}</select><input required value={newQuestion.body} onChange={e=>setNewQuestion({...newQuestion,body:e.target.value})} placeholder="نص السؤال" className="rounded-xl border p-3"/><textarea required value={newQuestion.options} onChange={e=>setNewQuestion({...newQuestion,options:e.target.value})} placeholder={"اكتب كل اختيار في سطر مستقل"} className="min-h-28 rounded-xl border p-3"/><div className="space-y-3"><input type="number" min="1" value={newQuestion.correct} onChange={e=>setNewQuestion({...newQuestion,correct:e.target.value})} placeholder="رقم الاختيار الصحيح (1، 2...)" className="w-full rounded-xl border p-3"/><input type="number" min="0.5" step="0.5" value={newQuestion.points} onChange={e=>setNewQuestion({...newQuestion,points:Number(e.target.value)})} className="w-full rounded-xl border p-3" placeholder="درجة السؤال"/></div><button disabled={teacherBusy} className="rounded-xl bg-brand p-3 font-bold text-white md:col-span-2">إضافة السؤال</button></form></div>
-        <div className="rounded-3xl bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">امتحاناتي</h3><div className="mt-4 grid gap-3 md:grid-cols-2">{teacherQuizzes.map(q=><div key={q.id} className="rounded-2xl border p-4"><div className="flex items-center justify-between gap-3"><b>{q.title}</b><span className="text-xs font-bold text-slate-500">{q.published?"منشور":"مسودة"}</span></div><p className="mt-2 text-sm text-slate-500">{q.duration_minutes} دقيقة</p>{!q.published&&<button disabled={teacherBusy} onClick={()=>publishQuiz(q.id)} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white">نشر الامتحان</button>}</div>)}</div></div>
-      </div> : <div className="mt-8 rounded-3xl bg-white p-6"><h3 className="text-xl font-black">الامتحانات المنشورة</h3><p className="mt-2 text-slate-500">سيتم عرض الامتحانات المنشورة هنا بعد تفعيل واجهة حل الامتحان وحفظ المحاولات.</p></div>}
-      {teacherMessage&&<p role="status" className="mt-4 rounded-xl bg-white p-4 text-sm font-bold text-brand">{teacherMessage}</p>}
-    </div></section>}
-    <section id="home" className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-14 lg:grid-cols-[1.05fr_.95fr] lg:px-8 lg:pb-28 lg:pt-24">
-      <div>
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-bold text-brand"><Sparkles size={15}/> تجربة امتحانات أذكى وأسهل</div>
-        <h1 className="max-w-2xl text-4xl font-black leading-[1.35] tracking-tight sm:text-5xl lg:text-6xl">كل امتحاناتك في <span className="text-brand">مكان واحد</span></h1>
-        <p className="mt-6 max-w-xl text-base leading-8 text-slate-500 sm:text-lg">منصة تعليمية تجمع الطالب والمعلم في تجربة منظمة. اختبر مستواك، تابع نتائجك، واعرف نقاط قوتك وفرص التحسن.</p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <button onClick={()=>openAuth("register","student")} className="rounded-2xl bg-brand px-7 py-4 font-bold text-white shadow-soft transition hover:-translate-y-1 hover:bg-blue-700">ابدأ كطالب <ArrowLeft className="mr-3 inline" size={18}/></button>
-          <button onClick={()=>openAuth("register","teacher")} className="rounded-2xl border border-slate-200 bg-white px-7 py-4 font-bold text-slate-700 hover:border-brand hover:text-brand">أنا معلّم</button>
-          <a href="#exams" className="rounded-2xl px-5 py-4 font-bold text-brand hover:bg-blue-50">جرّب امتحانًا <Play className="mr-2 inline" size={16}/></a>
+      <section id="home" className="bg-gradient-to-bl from-blue-950 via-blue-900 to-indigo-900 text-white">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 sm:px-6 md:grid-cols-[1.3fr_.7fr] md:py-24">
+          <div><span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm"><ShieldCheck size={16}/> تعليم منظم وتقييم موثوق</span>
+            <h1 className="mt-6 text-4xl font-black leading-tight sm:text-5xl">اختباراتك ودراستك<br/><span className="text-blue-200">في مكان واحد</span></h1>
+            <p className="mt-5 max-w-2xl text-lg leading-8 text-blue-100">منصة تجمع الامتحانات الإلكترونية، متابعة النتائج، وإدارة المحتوى التعليمي للطلاب والمعلمين.</p>
+            <div className="mt-8 flex flex-wrap gap-3">{profile ? <a href="#dashboard" className="rounded-xl bg-white px-6 py-3 font-black text-blue-900">اذهب إلى لوحة التحكم <ChevronLeft className="mr-2 inline"/></a> : <><button className="rounded-xl bg-white px-6 py-3 font-black text-blue-900" onClick={() => setAuthMode("register")}>ابدأ الآن</button><button className="rounded-xl border border-white/40 px-6 py-3 font-bold" onClick={() => setAuthMode("login")}>تسجيل الدخول</button></>}</div>
+          </div>
+          <div className="rounded-3xl border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur"><div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white/10 p-5"><BookOpen className="text-blue-200"/><p className="mt-4 text-3xl font-black">{quizzes.length}</p><p className="mt-1 text-sm text-blue-100">امتحان متاح</p></div>
+            <div className="rounded-2xl bg-white/10 p-5"><Award className="text-blue-200"/><p className="mt-4 text-3xl font-black">{completedCount}</p><p className="mt-1 text-sm text-blue-100">محاولة مكتملة</p></div>
+            <div className="col-span-2 rounded-2xl bg-white/10 p-5"><ShieldCheck className="text-blue-200"/><p className="mt-3 font-bold">حفظ تلقائي للإجابات</p><p className="mt-1 text-sm leading-6 text-blue-100">تُحفظ إجاباتك أثناء الامتحان وتُحسب النتيجة عند التسليم.</p></div>
+          </div></div>
         </div>
-        <div className="mt-10 flex flex-wrap gap-7 text-sm text-slate-500"><span className="flex items-center gap-2"><ShieldCheck className="text-emerald-500" size={18}/> نتائج دقيقة</span><span className="flex items-center gap-2"><Clock3 className="text-brand" size={18}/> امتحانات بوقت محدد</span><span className="flex items-center gap-2"><BarChart3 className="text-violet-500" size={18}/> متابعة التقدم</span></div>
-      </div>
-      <div className="relative">
-        <div className="absolute -inset-5 rounded-[3rem] bg-gradient-to-br from-blue-100 via-violet-50 to-emerald-50 blur-2xl"/>
-        <div className="relative rounded-[2rem] border border-white bg-white p-5 shadow-soft sm:p-7">
-          <div className="flex items-center justify-between"><div><p className="text-sm text-slate-400">معاينة لوحة الطالب</p><h3 className="mt-1 text-xl font-black">أهلاً بيك 👋</h3></div><span className="rounded-xl bg-blue-50 p-3 text-brand"><GraduationCap/></span></div>
-          <div className="mt-7 grid grid-cols-3 gap-3">{[["الامتحانات","12"],["متوسط الدرجات","86%"],["ساعات التعلم","24"]].map(([k,v])=><div key={k} className="rounded-2xl bg-slate-50 p-3 text-center"><b className="block text-xl text-brand">{v}</b><small className="mt-1 block text-[10px] text-slate-500 sm:text-xs">{k}</small></div>)}</div>
-          <div className="mt-7 flex items-center justify-between"><b>امتحانات مقترحة</b><a href="#exams" className="text-xs font-bold text-brand">عرض الكل</a></div>
-          <div className="mt-4 space-y-3">{exams.slice(0,2).map((e,i)=><button onClick={()=>startDemo(i)} key={e.title} className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 p-3 text-right transition hover:border-blue-200 hover:bg-blue-50/40"><span className={`grid h-11 w-11 place-items-center rounded-xl ${i===0?"bg-blue-50 text-brand":"bg-violet-50 text-violet-600"}`}><BookOpen/></span><span className="min-w-0 flex-1"><b className="block truncate text-sm">{e.title}</b><small className="text-xs text-slate-400">{e.questions} سؤال • {e.time}</small></span><ArrowLeft size={16} className="text-slate-300"/></button>)}</div>
-          <div className="mt-6 rounded-2xl bg-gradient-to-l from-brand to-indigo-500 p-4 text-white"><p className="text-xs text-blue-100">هدفك القادم</p><b className="mt-1 block">حافظ على تقدمك وحقق أفضل نتيجة!</b></div>
+      </section>
+
+      {notice && <div className="mx-auto mt-5 max-w-7xl px-5 sm:px-6"><div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="إغلاق"><X size={18}/></button></div></div>}
+
+      {profile && <section id="dashboard" className="scroll-mt-24 py-12">
+        <div className="mx-auto max-w-7xl px-5 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="font-bold text-blue-700">مساحة العمل</p><h2 className="mt-2 text-3xl font-black">أهلًا {profile.name}</h2><p className="mt-2 text-slate-500">{profile.role === "TEACHER" ? "إدارة المواد والاختبارات والطلاب" : profile.role === "ADMIN" ? "إدارة المنصة واعتماد حسابات المعلمين" : "تابع اختباراتك ونتائجك"}</p></div><button className={secondaryClass} onClick={() => void loadWorkspace()} disabled={historyLoading}><RefreshCw size={17} className={historyLoading ? "animate-spin" : ""}/> تحديث البيانات</button></div>
+
+          {profile.role === "TEACHER" && <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-3xl border bg-white p-6 shadow-sm"><h3 className="flex items-center gap-2 text-xl font-black"><BookOpen className="text-blue-700"/> المواد الدراسية</h3>
+              <form onSubmit={createSubject} className="mt-5 space-y-3"><input className={inputClass} required value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="اسم المادة"/><textarea className={inputClass} value={subjectDescription} onChange={e => setSubjectDescription(e.target.value)} placeholder="وصف مختصر للمادة" rows={2}/><button className={primaryClass} disabled={busy}><Plus size={17}/> إضافة مادة</button></form>
+              <div className="mt-5 space-y-2">{subjects.map(s => <div key={s.id} className="rounded-xl bg-slate-50 p-3"><b>{s.name}</b>{s.description && <p className="mt-1 text-sm text-slate-500">{s.description}</p>}</div>)}{!subjects.length && <p className="text-sm text-slate-400">لم تضف مواد بعد.</p>}</div>
+            </div>
+            <div className="rounded-3xl border bg-white p-6 shadow-sm"><h3 className="flex items-center gap-2 text-xl font-black"><ClipboardList className="text-blue-700"/> إنشاء امتحان</h3>
+              <form onSubmit={createQuiz} className="mt-5 space-y-3"><input className={inputClass} required value={quizForm.title} onChange={e => setQuizForm({ ...quizForm, title: e.target.value })} placeholder="عنوان الامتحان"/><textarea className={inputClass} value={quizForm.description} onChange={e => setQuizForm({ ...quizForm, description: e.target.value })} placeholder="وصف وتعليمات الامتحان" rows={2}/><select className={inputClass} required value={quizForm.subject_id} onChange={e => setQuizForm({ ...quizForm, subject_id: e.target.value })}><option value="">اختر المادة</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><label className="block text-sm font-semibold">مدة الامتحان بالدقائق<input className={inputClass + " mt-2"} type="number" min={1} max={300} value={quizForm.duration_minutes} onChange={e => setQuizForm({ ...quizForm, duration_minutes: Number(e.target.value) })}/></label><button className={primaryClass} disabled={busy || !subjects.length}><Plus size={17}/> حفظ الامتحان</button></form>
+            </div>
+            <div className="rounded-3xl border bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">إضافة سؤال اختيار من متعدد</h3>
+              <form onSubmit={addQuestion} className="mt-5 grid gap-3 md:grid-cols-2"><select className={inputClass} required value={questionForm.quiz_id} onChange={e => setQuestionForm({ ...questionForm, quiz_id: e.target.value })}><option value="">اختر الامتحان</option>{quizzes.filter(q => !q.published).map(q => <option key={q.id} value={q.id}>{q.title}</option>)}</select><input className={inputClass} required value={questionForm.body} onChange={e => setQuestionForm({ ...questionForm, body: e.target.value })} placeholder="نص السؤال"/><textarea className={inputClass} required rows={5} value={questionForm.options} onChange={e => setQuestionForm({ ...questionForm, options: e.target.value })} placeholder={"اكتب كل اختيار في سطر مستقل"}/><div className="space-y-3"><input className={inputClass} type="number" min={1} value={questionForm.correct} onChange={e => setQuestionForm({ ...questionForm, correct: e.target.value })} placeholder="رقم الإجابة الصحيحة"/><input className={inputClass} type="number" min={0.5} step={0.5} value={questionForm.points} onChange={e => setQuestionForm({ ...questionForm, points: e.target.value })} placeholder="درجة السؤال"/></div><button className={primaryClass + " md:col-span-2"} disabled={busy || !questionForm.quiz_id}><Plus size={17}/> حفظ السؤال</button></form>
+            </div>
+            <div className="rounded-3xl border bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">الاختبارات التي أنشأتها</h3><div className="mt-5 grid gap-3 md:grid-cols-2">{quizzes.map(q => <div key={q.id} className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-3"><div><b>{q.title}</b><p className="mt-1 text-sm text-slate-500">{subjects.find(s => s.id === q.subject_id)?.name} • {q.duration_minutes} دقيقة</p></div><span className={"rounded-full px-3 py-1 text-xs font-bold " + (q.published ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{q.published ? "منشور" : "مسودة"}</span></div>{!q.published && <button className={primaryClass + " mt-4"} onClick={() => void publishQuiz(q.id)} disabled={busy}>نشر الامتحان</button>}</div>)}{!quizzes.length && <p className="text-sm text-slate-400">لم تنشئ اختبارات بعد.</p>}</div></div>
+          </div>}
+
+          {profile.role === "STUDENT" && <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+            <div id="available-exams" className="scroll-mt-24 rounded-3xl border bg-white p-6 shadow-sm"><h3 className="flex items-center gap-2 text-xl font-black"><BookOpen className="text-blue-700"/> الامتحانات المتاحة</h3><div className="mt-5 space-y-3">{quizzes.map(q => <div key={q.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><b className="text-lg">{q.title}</b><p className="mt-1 text-sm text-slate-500">{q.subjects?.name || "مادة دراسية"} • {q.duration_minutes} دقيقة</p>{q.description && <p className="mt-2 text-sm leading-6 text-slate-600">{q.description}</p>}</div><button className={primaryClass} onClick={() => void startExam(q)} disabled={busy}><Play size={16}/> ابدأ الامتحان</button></div></div>)}{!quizzes.length && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">لا توجد امتحانات منشورة حاليًا.</p>}</div></div>
+            <div className="rounded-3xl border bg-white p-6 shadow-sm"><h3 className="flex items-center gap-2 text-xl font-black"><BarChart3 className="text-blue-700"/> سجل النتائج</h3><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-2xl font-black text-blue-800">{attempts.length}</p><p className="mt-1 text-xs text-slate-500">كل المحاولات</p></div><div className="rounded-2xl bg-emerald-50 p-4"><p className="text-2xl font-black text-emerald-800">{completedCount}</p><p className="mt-1 text-xs text-slate-500">امتحانات مكتملة</p></div></div><div className="mt-4 space-y-2">{attempts.map(a => <div key={a.id} className="rounded-xl border p-3"><div className="flex items-center justify-between gap-2"><b className="text-sm">{a.quizzes?.title || "امتحان"}</b><span className="text-xs text-slate-500">{a.status === "SUBMITTED" ? "مكتمل" : a.status === "LOCKED" ? "مغلق" : "قيد التنفيذ"}</span></div>{a.status === "SUBMITTED" && <p className="mt-2 text-sm font-bold text-emerald-700">الدرجة: {a.score ?? 0}</p>}<p className="mt-1 text-xs text-slate-400">{new Date(a.started_at).toLocaleString("ar-EG")}</p></div>)}{!attempts.length && <p className="text-sm text-slate-400">ستظهر نتائجك هنا بعد أداء الامتحانات.</p>}</div>
+              {teacherStatus && <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">طلب المعلم: {teacherStatus === "PENDING" ? "قيد المراجعة" : teacherStatus === "APPROVED" ? "تمت الموافقة" : "مرفوض"}</div>}
+              {!teacherStatus && <button className={secondaryClass + " mt-5 w-full"} onClick={async () => { setBusy(true); const { error } = await supabase.from("teacher_requests").insert({ user_id: profile.id, note: "طلب تفعيل حساب معلم" }); setNotice(error ? error.message : "تم إرسال طلب اعتماد المعلم."); if (!error) setTeacherStatus("PENDING"); setBusy(false); }} disabled={busy}>طلب حساب معلم</button>}
+            </div>
+          </div>}
+
+          {profile.role === "ADMIN" && <div className="mt-8 rounded-3xl border bg-white p-6 shadow-sm"><h3 className="flex items-center gap-2 text-xl font-black"><Users className="text-blue-700"/> طلبات اعتماد المعلمين</h3><div className="mt-5 space-y-3">{teacherRequests.map(r => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4"><div><b>{r.profile?.full_name || "حساب جديد"}</b><p className="text-sm text-slate-500">{r.profile?.email || r.user_id}</p></div><div className="flex gap-2"><button className={primaryClass} onClick={() => void reviewTeacher(r.id, true)} disabled={busy}>اعتماد</button><button className={secondaryClass} onClick={() => void reviewTeacher(r.id, false)} disabled={busy}>رفض</button></div></div>)}{!teacherRequests.length && <p className="text-sm text-slate-500">لا توجد طلبات معلقة.</p>}</div></div>}
         </div>
-      </div>
-    </section>
+      </section>}
 
-    <section id="features" className="scroll-mt-24 bg-white py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
-      <div className="mx-auto max-w-2xl text-center"><p className="font-bold text-brand">كل ما تحتاجه</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">تعليم منظم ونتائج أوضح</h2><p className="mt-4 leading-8 text-slate-500">أدوات بسيطة تساعد الطالب يتعلم والمعلم يدير الامتحانات بسهولة.</p></div>
-      <div className="mt-12 grid gap-5 md:grid-cols-3">{[{icon:ClipboardList,title:"امتحانات تفاعلية",desc:"أسئلة متنوعة، مؤقت واضح، وحفظ تلقائي للإجابات."},{icon:BarChart3,title:"تحليل النتائج",desc:"اعرف درجاتك وتاريخ محاولاتك ومستواك في كل مادة."},{icon:ShieldCheck,title:"نزاهة الامتحان",desc:"تسجيل أحداث مغادرة الصفحة والخروج من وضع ملء الشاشة."}].map(({icon:Icon,title,desc})=><article key={title} className="rounded-3xl border border-slate-100 bg-slate-50 p-7 transition hover:-translate-y-1 hover:shadow-soft"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-100 text-brand"><Icon/></span><h3 className="mt-5 text-lg font-black">{title}</h3><p className="mt-3 leading-7 text-slate-500">{desc}</p></article>)}</div>
-    </div></section>
+      {!profile && <section className="mx-auto max-w-7xl px-5 py-14 sm:px-6"><div className="grid gap-5 md:grid-cols-3">{[
+        { icon: BookOpen, title: "اختبارات منظمة", body: "امتحانات بمدة محددة وأسئلة مرتبة ونتائج محفوظة." },
+        { icon: ShieldCheck, title: "نزاهة الامتحان", body: "تسجيل مغادرة شاشة الامتحان والتنبيه عند تكرار المخالفة." },
+        { icon: BarChart3, title: "متابعة الأداء", body: "سجل للمحاولات والدرجات يساعدك على متابعة تقدمك." }
+      ].map(item => <div key={item.title} className="rounded-3xl border bg-white p-6 shadow-sm"><item.icon className="text-blue-700" size={28}/><h3 className="mt-4 text-xl font-black">{item.title}</h3><p className="mt-2 leading-7 text-slate-500">{item.body}</p></div>)}</div><div className="mt-12 rounded-3xl bg-blue-50 p-8 text-center"><h2 className="text-2xl font-black">ابدأ رحلتك التعليمية</h2><p className="mt-2 text-slate-600">أنشئ حسابًا للوصول إلى الامتحانات ومتابعة النتائج.</p><button className={primaryClass + " mt-5"} onClick={() => setAuthMode("register")}>إنشاء حساب جديد</button></div></section>}
 
-    <section id="exams" className="scroll-mt-24 mx-auto max-w-7xl px-5 py-20 lg:px-8">
-      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="font-bold text-brand">نماذج تجريبية</p><h2 className="mt-2 text-3xl font-black">اكتشف الامتحانات</h2><p className="mt-3 text-slate-500">اختار نموذجًا وجرب حل الأسئلة بنفسك.</p></div><span className="rounded-full bg-white px-4 py-2 text-xs text-slate-500">نسخة تجريبية</span></div>
-      <div className="mt-9 grid gap-5 md:grid-cols-3">{exams.map((e,i)=><article key={e.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-soft"><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-brand">{e.subject}</span><h3 className="mt-5 text-lg font-black">{e.title}</h3><p className="mt-2 text-sm text-slate-400">{e.grade}</p><p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">{e.description}</p><div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500"><span><ClipboardList className="ml-1 inline" size={14}/>{e.questions} سؤال</span><span><Clock3 className="ml-1 inline" size={14}/>{e.time}</span></div><button onClick={()=>startDemo(i)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-bold text-white transition hover:bg-blue-700">ابدأ النموذج التجريبي <ArrowLeft size={16}/></button></article>)}</div>
-    </section>
+      <footer className="border-t bg-white px-5 py-8 text-center text-sm text-slate-500">© 2026 مِنصّة — منصة التعليم والاختبارات</footer>
 
-    <section id="how" className="scroll-mt-24 bg-slate-900 py-20 text-white"><div className="mx-auto max-w-7xl px-5 lg:px-8"><div className="text-center"><p className="font-bold text-blue-300">خطوات بسيطة</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">ابدأ في 3 خطوات</h2></div><div className="mt-12 grid gap-6 md:grid-cols-3">{[{n:"01",icon:UserRound,title:"أنشئ حسابك",desc:"حدد إذا كنت طالبًا أو معلمًا وسجل بياناتك."},{n:"02",icon:BookOpen,title:"اختر الامتحان",desc:"تصفح المواد والاختبارات المتاحة لك."},{n:"03",icon:Award,title:"اعرف نتيجتك",desc:"شاهد درجتك وراجع أداءك بعد التسليم."}].map(({n,icon:Icon,title,desc})=><div key={n} className="rounded-3xl border border-white/10 bg-white/5 p-7"><div className="flex items-center justify-between"><Icon className="text-blue-300" size={27}/><span className="text-3xl font-black text-white/20">{n}</span></div><h3 className="mt-6 text-xl font-bold">{title}</h3><p className="mt-3 leading-7 text-slate-400">{desc}</p></div>)}</div><div className="mt-10 text-center"><button onClick={()=>openAuth("register")} className="rounded-2xl bg-white px-8 py-4 font-bold text-slate-900 hover:bg-blue-50">إنشاء حساب جديد <ArrowLeft className="mr-2 inline" size={17}/></button></div></div></section>
+      {authMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}><div className="my-6 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-700"><LockKeyhole/></span><button onClick={() => setAuthMode(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">{authMode === "login" ? "تسجيل الدخول" : "إنشاء حساب"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">أدخل بياناتك للوصول إلى حسابك.</p>{authMode === "register" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setAuthRole("STUDENT")} className={"rounded-xl border p-3 font-bold " + (authRole === "STUDENT" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>طالب</button><button type="button" onClick={() => setAuthRole("TEACHER")} className={"rounded-xl border p-3 font-bold " + (authRole === "TEACHER" ? "border-blue-700 bg-blue-50 text-blue-800" : "")}>معلم</button></div>}<form onSubmit={handleAuth} className="mt-5 space-y-3">{authMode === "register" && <input className={inputClass} name="fullName" minLength={2} required placeholder="الاسم بالكامل"/>}<input className={inputClass} name="email" type="email" autoComplete="email" required placeholder="البريد الإلكتروني"/><input className={inputClass} name="password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={8} required placeholder="كلمة المرور (8 أحرف على الأقل)"/><button className={primaryClass + " w-full"} type="submit" disabled={busy}>{busy ? "جارٍ التنفيذ..." : authMode === "login" ? "دخول" : "إنشاء الحساب"}</button></form>{authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-800">{authError}</p>}<button className="mt-5 w-full text-sm font-bold text-blue-700" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "ليس لديك حساب؟ أنشئ حسابًا" : "لديك حساب؟ سجل الدخول"}</button></div></div>}
 
-    <section id="faq" className="scroll-mt-24 bg-white py-20"><div className="mx-auto max-w-3xl px-5"><div className="text-center"><CircleHelp className="mx-auto text-brand" size={30}/><h2 className="mt-3 text-3xl font-black">الأسئلة الشائعة</h2></div><div className="mt-10 space-y-3">{[{q:"هل الامتحانات المتاحة حقيقية؟",a:"الموجود حاليًا نماذج تجريبية للتأكد من تجربة الاستخدام. سيتم عرض الامتحانات الفعلية بعد ربط لوحة المعلم وقاعدة البيانات."},{q:"هل أستطيع إنشاء امتحان كمعلم؟",a:"واجهة المعلم ضمن خطة التنفيذ، وسيتم تفعيل إنشاء المواد والأسئلة والامتحانات بعد استكمال تسجيل الحسابات وصلاحيات الخادم."},{q:"هل يتم حفظ نتيجتي؟",a:"نتيجة النموذج التجريبي تظهر داخل الصفحة فقط ولا تُحفظ في حساب. الحفظ الدائم يحتاج ربط الواجهة بخدمات الخادم."}].map((item,i)=><div key={item.q} className="rounded-2xl border border-slate-200"><button onClick={()=>setFaqOpen(faqOpen===i?null:i)} className="flex w-full items-center justify-between gap-4 p-5 text-right font-bold"><span>{item.q}</span><ChevronDown className={`shrink-0 transition ${faqOpen===i?"rotate-180 text-brand":""}`}/></button>{faqOpen===i&&<p className="px-5 pb-5 leading-8 text-slate-500">{item.a}</p>}</div>)}</div></div></section>
-
-    <section className="bg-blue-50 py-16"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-5 text-center md:flex-row md:text-right lg:px-8"><div><h2 className="text-3xl font-black">جاهز تبدأ رحلتك؟</h2><p className="mt-3 text-slate-500">أنشئ حسابك واستعد لتجربة تعليمية منظمة.</p></div><button onClick={()=>openAuth("register")} className="rounded-2xl bg-brand px-8 py-4 font-bold text-white shadow-soft hover:bg-blue-700">سجل الآن <ArrowLeft className="mr-2 inline" size={17}/></button></div></section>
-    <footer className="bg-slate-950 px-5 py-8 text-center text-sm text-slate-500"><div className="mb-3 flex justify-center gap-5"><a href="#home" className="hover:text-white">الرئيسية</a><a href="#features" className="hover:text-white">المميزات</a><a href="#faq" className="hover:text-white">المساعدة</a></div>© 2026 مِنصّة — منصة الامتحانات التعليمية</footer>
-
-    {authMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4" onMouseDown={e=>{if(e.target===e.currentTarget)setAuthMode(null)}}><div className="my-8 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8" dir="rtl"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-brand"><LockKeyhole/></span><button onClick={()=>setAuthMode(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">{authMode==="login"?"تسجيل الدخول":"إنشاء حساب جديد"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">سجّل ببريدك الإلكتروني وكلمة المرور. حساب المعلم يحتاج اعتماد الإدارة.</p>{authMode==="register"&&<div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={()=>setRole("student")} className={`rounded-xl border p-3 font-bold ${role==="student"?"border-brand bg-blue-50 text-brand":"border-slate-200"}`}>طالب</button><button type="button" onClick={()=>setRole("teacher")} className={`rounded-xl border p-3 font-bold ${role==="teacher"?"border-brand bg-blue-50 text-brand":"border-slate-200"}`}>معلم</button></div>}<form onSubmit={submitAuth} className="mt-5 space-y-3">{authMode==="register"&&<input name="fullName" required minLength={2} placeholder="الاسم بالكامل" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/>}<input name="email" required type="email" autoComplete="email" placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/><input name="password" required minLength={6} type="password" autoComplete={authMode==="login"?"current-password":"new-password"} placeholder="كلمة المرور (6 أحرف على الأقل)" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/><button disabled={authLoading} type="submit" className="w-full rounded-xl bg-brand py-3.5 font-bold text-white hover:bg-blue-700 disabled:opacity-60">{authLoading?"جارٍ التنفيذ...":authMode==="login"?"دخول":"إنشاء الحساب"}</button></form>{authMessage&&<p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800">{authMessage}</p>}<button onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthMessage("")}} className="mt-5 w-full text-sm font-bold text-brand">{authMode==="login"?"ليس لديك حساب؟ أنشئ حسابًا":"لديك حساب بالفعل؟ سجل الدخول"}</button></div></div>}
-
-    {quizOpen && selectedExam!==null && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4"><div className="my-8 w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8" dir="rtl"><div className="flex items-center justify-between"><div><p className="text-xs font-bold text-brand">نموذج تجريبي • {exams[selectedExam].subject}</p><h2 className="mt-1 text-xl font-black">{exams[selectedExam].title}</h2></div><button onClick={closeQuiz} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div>{!quizFinished?<><div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-right"><div className="flex items-center justify-between gap-3"><b className="text-amber-900">مراقبة نزاهة الامتحان</b><span className="rounded-full bg-white px-3 py-1 text-sm font-black text-amber-800">{quizStrikes}/3 إنذارات</span></div><div className="mt-3 flex gap-2">{[0,1,2].map(n=><span key={n} className={`h-2 flex-1 rounded-full ${n<quizStrikes?"bg-red-500":"bg-amber-200"}`}/>)}</div>{integrityNotice && <p role="alert" className="mt-3 text-sm font-bold leading-6 text-amber-900">{integrityNotice}</p>}<p className="mt-2 text-xs leading-5 text-amber-800">يُسجل النظام مغادرة تبويب الامتحان أو الخروج من ملء الشاشة. لا يقرأ التطبيقات الأخرى.</p></div><div className="mt-6 flex items-center justify-between text-sm text-slate-500"><span>السؤال {questionIndex+1} من {demoQuestions.length}</span><span><Timer className="ml-1 inline" size={16}/> تجربة بدون توقيت فعلي</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand transition-all" style={{width:`${((questionIndex+1)/demoQuestions.length)*100}%`}}/></div><h3 className="mt-7 text-lg font-bold leading-8">{demoQuestions[questionIndex].q}</h3><div className="mt-5 space-y-3">{demoQuestions[questionIndex].choices.map((choice,i)=><button key={choice} onClick={()=>chooseAnswer(i)} className={`w-full rounded-xl border p-4 text-right transition ${answers[questionIndex]===i?"border-brand bg-blue-50 text-brand":"border-slate-200 hover:border-blue-300"}`}>{choice}</button>)}</div><button disabled={answers[questionIndex]===undefined} onClick={nextQuestion} className="mt-7 w-full rounded-xl bg-brand py-3.5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{questionIndex===demoQuestions.length-1?"إنهاء وعرض النتيجة":"السؤال التالي"}</button></>:<div className="py-8 text-center">{quizLocked ? <><LockKeyhole className="mx-auto text-red-500" size={48}/><h3 className="mt-4 text-2xl font-black text-red-600">تم قفل الامتحان</h3><p className="mt-2 leading-7 text-slate-600">تم تسجيل 3 مخالفات نزاهة. لا يمكن استكمال هذه المحاولة.</p></> : <><CheckCircle2 className="mx-auto text-emerald-500" size={48}/><h3 className="mt-4 text-2xl font-black">انتهى النموذج التجريبي</h3><p className="mt-2 text-slate-500">نتيجتك: {score} من {demoQuestions.length}</p></>}<button onClick={closeQuiz} className="mt-6 rounded-xl bg-brand px-8 py-3 font-bold text-white">إغلاق</button></div>}<p className="mt-5 text-center text-xs leading-5 text-slate-400">هذه تجربة محلية للتصميم فقط؛ لا تُحفظ الإجابات في قاعدة البيانات.</p></div></div>}
-  </main>;
+      {activeExam && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/80 p-3 sm:p-5"><div className="my-4 w-full max-w-2xl rounded-3xl bg-white p-5 shadow-2xl sm:p-8">
+        <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-blue-700">امتحان إلكتروني</p><h2 className="mt-1 text-xl font-black sm:text-2xl">{activeExam.quiz.title}</h2></div><div className="rounded-xl bg-blue-50 px-3 py-2 text-lg font-black text-blue-800"><Clock3 className="ml-1 inline" size={17}/>{timeLabel}</div></div>
+        {activeExam.locked ? <div className="py-12 text-center"><LockKeyhole className="mx-auto text-red-600" size={54}/><h3 className="mt-4 text-2xl font-black text-red-700">تم إغلاق المحاولة</h3><p className="mt-3 text-slate-600">تم تسجيل ثلاث مخالفات. تواصل مع المعلم إذا كنت ترى أن الإغلاق غير صحيح.</p><button className={primaryClass + " mt-6"} onClick={() => { setActiveExam(null); setIntegrityMessage(""); void loadWorkspace(); }}>إغلاق</button></div> :
+        activeExam.result !== null ? <div className="py-12 text-center"><CheckCircle2 className="mx-auto text-emerald-600" size={54}/><h3 className="mt-4 text-2xl font-black">تم تسليم الامتحان</h3><p className="mt-3 text-3xl font-black text-blue-800">{activeExam.result}</p><p className="mt-1 text-sm text-slate-500">درجتك النهائية</p><button className={primaryClass + " mt-6"} onClick={() => { setActiveExam(null); setIntegrityMessage(""); void loadWorkspace(); }}>العودة إلى لوحة التحكم</button></div> :
+        <><div className="mt-5 flex items-center justify-between text-sm text-slate-500"><span>السؤال {activeExam.index + 1} من {activeExam.questions.length}</span><span>{activeExam.strikes}/3 إنذارات</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-700" style={{ width: (((activeExam.index + 1) / activeExam.questions.length) * 100) + "%" }}/></div>
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><div className="flex items-center gap-2 font-bold"><AlertTriangle size={17}/> مراقبة نزاهة الامتحان</div><p className="mt-1">مغادرة صفحة الامتحان أو الخروج من ملء الشاشة تُسجل كمخالفة. عند ثلاث مخالفات تُقفل المحاولة.</p>{integrityMessage && <p role="alert" className="mt-2 font-bold">{integrityMessage}</p>}</div>
+          {currentQuestion && <><h3 className="mt-7 text-lg font-black leading-8">{currentQuestion.body}</h3><p className="mt-1 text-xs text-slate-400">درجة السؤال: {currentQuestion.points}</p><div className="mt-5 space-y-3">{currentQuestion.options.map((o, i) => <button key={o.id} onClick={() => void chooseOption(o.id)} className={"w-full rounded-xl border p-4 text-right transition " + (activeExam.selected[currentQuestion.id] === o.id ? "border-blue-700 bg-blue-50 font-bold text-blue-800" : "border-slate-200 hover:border-blue-300")}>{String.fromCharCode(1571 + i) + ") " + o.body}</button>)}</div></>}
+          <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><button className={secondaryClass} disabled={activeExam.index === 0} onClick={() => setActiveExam(old => old ? { ...old, index: old.index - 1 } : old)}>السابق</button>{activeExam.index < activeExam.questions.length - 1 ? <button className={primaryClass} onClick={() => setActiveExam(old => old ? { ...old, index: old.index + 1 } : old)}>التالي <ChevronLeft size={17}/></button> : <button className={primaryClass} disabled={busy} onClick={() => void finishExam(false)}><Send size={17}/> تسليم الامتحان</button>}</div>
+        </>}
+      </div></div>}
+      {authLoading && <div className="fixed inset-0 z-[60] grid place-items-center bg-white/80"><div className="text-center"><RefreshCw className="mx-auto animate-spin text-blue-700" size={30}/><p className="mt-3 font-bold text-slate-600">جارٍ تحميل المنصة...</p></div></div>}
+    </main>
+  );
 }
