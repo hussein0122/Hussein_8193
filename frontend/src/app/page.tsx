@@ -149,17 +149,17 @@ export default function Home() {
         const result = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
         if (result.error) throw result.error;
         if (!result.data.session) { setAuthMessage("تأكيد البريد الإلكتروني ما زال مفعّلًا في إعدادات Supabase."); return; }
-        setAuthUser({ id: result.data.user.id, email, name: fullName || email.split("@")[0], role: "STUDENT" });
+        setAuthUser({ id: result.data.user!.id, email, name: fullName || email.split("@")[0], role: "STUDENT" });
         if (role === "teacher") {
-          const request = await supabase.from("teacher_requests").upsert({ user_id: result.data.user.id, note: "طلب تفعيل حساب معلم" }, { onConflict: "user_id" });
+          const request = await supabase.from("teacher_requests").upsert({ user_id: result.data.user!.id, note: "طلب تفعيل حساب معلم" }, { onConflict: "user_id" });
           if (request.error) throw request.error;
           setTeacherMessage("تم إنشاء حسابك واستلام طلب تفعيل المعلم. ستظهر أدوات إنشاء الامتحانات بعد اعتماد الإدارة.");
         }
       } else {
         const result = await supabase.auth.signInWithPassword({ email, password });
         if (result.error) throw result.error;
-        const profile = await supabase.from("profiles").select("full_name,role").eq("id", result.data.user.id).maybeSingle();
-        setAuthUser({ id: result.data.user.id, email, name: profile.data?.full_name || email.split("@")[0], role: profile.data?.role || "STUDENT" });
+        const profile = await supabase.from("profiles").select("full_name,role").eq("id", result.data.user!.id).maybeSingle();
+        setAuthUser({ id: result.data.user!.id, email, name: profile.data?.full_name || email.split("@")[0], role: profile.data?.role || "STUDENT" });
       }
       setAuthMode(null);
     } catch (error) {
