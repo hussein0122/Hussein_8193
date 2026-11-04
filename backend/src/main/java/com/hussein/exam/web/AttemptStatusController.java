@@ -1,7 +1,9 @@
 package com.hussein.exam.web;
 import com.hussein.exam.repo.ExamAttemptRepository;
 import java.util.*;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
+@Profile("legacy-api")
 @RestController
 @RequestMapping("/api/attempts")
 public class AttemptStatusController {
