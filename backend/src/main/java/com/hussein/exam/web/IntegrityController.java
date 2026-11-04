@@ -4,9 +4,11 @@ import com.hussein.exam.service.IntegrityService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.*;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
+@Profile("legacy-api")
 @RestController
 @Validated
 @RequestMapping("/api/attempts/{attemptId}/integrity-events")
