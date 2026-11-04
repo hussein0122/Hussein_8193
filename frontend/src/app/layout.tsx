@@ -2,10 +2,10 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "مِنصّة | التعليم والاختبارات",
+  title: "Quizora | التعليم والاختبارات",
   description: "منصة عربية لإدارة المواد والاختبارات الإلكترونية ومتابعة أداء الطلاب",
-  applicationName: "مِنصّة",
-  appleWebApp: { capable: true, title: "مِنصّة", statusBarStyle: "default" }
+  applicationName: "Quizora",
+  appleWebApp: { capable: true, title: "Quizora", statusBarStyle: "default" }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
