@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft, BarChart3, BookOpen, CheckCircle2, Clock3, GraduationCap,
@@ -32,6 +32,11 @@ export default function Home() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [quizStrikes, setQuizStrikes] = useState(0);
+  const [quizLocked, setQuizLocked] = useState(false);
+  const [integrityNotice, setIntegrityNotice] = useState("");
+  const fullscreenWasActive = useRef(false);
+  const lastIntegrityEventAt = useRef(0);
   const [faqOpen, setFaqOpen] = useState<number | null>(0);
   useEffect(() => {
     let alive = true;
@@ -46,6 +51,25 @@ export default function Home() {
     });
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
+  useEffect(() => {
+    if (!quizOpen || quizFinished || quizLocked) return;
+    const registerViolation = (reason: string) => {
+      const now = Date.now();
+      if (now - lastIntegrityEventAt.current < 1800) return;
+      lastIntegrityEventAt.current = now;
+      setQuizStrikes(current => {
+        const next = Math.min(current + 1, 3);
+        if (next >= 3) { setQuizLocked(true); setQuizFinished(true); setIntegrityNotice("تم إغلاق الامتحان نهائيًا بعد تسجيل 3 مخالفات."); }
+        else setIntegrityNotice(`تنبيه رقم ${next} من 3: ${reason}. ارجع للامتحان ولا تكرر مغادرة الصفحة.`);
+        return next;
+      });
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") registerViolation("تم اكتشاف مغادرة صفحة الامتحان"); };
+    const onFullscreen = () => { if (fullscreenWasActive.current && !document.fullscreenElement) { fullscreenWasActive.current = false; registerViolation("تم اكتشاف الخروج من وضع ملء الشاشة"); } };
+    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => { document.removeEventListener("visibilitychange", onVisibility); document.removeEventListener("fullscreenchange", onFullscreen); };
+  }, [quizOpen, quizFinished, quizLocked]);
   const score = useMemo(() => answers.reduce((sum, answer, i) => sum + (answer === demoQuestions[i]?.correct ? 1 : 0), 0), [answers]);
 
   function openAuth(mode: "login" | "register", selectedRole = role) {
@@ -76,8 +100,9 @@ export default function Home() {
       setAuthMessage(error instanceof Error ? error.message : "تعذر إتمام تسجيل الدخول.");
     } finally { setAuthLoading(false); }
   }
-  function startDemo(index: number) {
-    setSelectedExam(index); setQuestionIndex(0); setAnswers([]); setQuizFinished(false); setQuizOpen(true);
+  async function startDemo(index: number) {
+    setSelectedExam(index); setQuestionIndex(0); setAnswers([]); setQuizFinished(false); setQuizLocked(false); setQuizStrikes(0); setIntegrityNotice(""); lastIntegrityEventAt.current = 0; fullscreenWasActive.current = false; setQuizOpen(true);
+    try { if (document.documentElement.requestFullscreen) { await document.documentElement.requestFullscreen(); fullscreenWasActive.current = Boolean(document.fullscreenElement); } } catch { fullscreenWasActive.current = false; }
   }
   function chooseAnswer(index: number) {
     setAnswers(prev => { const next = [...prev]; next[questionIndex] = index; return next; });
@@ -86,7 +111,7 @@ export default function Home() {
     if (questionIndex < demoQuestions.length - 1) setQuestionIndex(i => i + 1);
     else setQuizFinished(true);
   }
-  function closeQuiz() { setQuizOpen(false); setSelectedExam(null); }
+  function closeQuiz() { setQuizOpen(false); setSelectedExam(null); fullscreenWasActive.current = false; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
 
   return <main className="min-h-screen overflow-hidden">
     <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur">
@@ -154,6 +179,6 @@ export default function Home() {
 
     {authMode && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4" onMouseDown={e=>{if(e.target===e.currentTarget)setAuthMode(null)}}><div className="my-8 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8" dir="rtl"><div className="flex items-center justify-between"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-brand"><LockKeyhole/></span><button onClick={()=>setAuthMode(null)} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div><h2 className="mt-5 text-2xl font-black">{authMode==="login"?"تسجيل الدخول":"إنشاء حساب جديد"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">سجّل ببريدك الإلكتروني وكلمة المرور. حسابات المعلمين تُفعّل بعد اعتماد الإدارة.</p><form onSubmit={submitAuth} className="mt-5 space-y-3">{authMode==="register"&&<input name="fullName" required minLength={2} placeholder="الاسم بالكامل" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/>}<input name="email" required type="email" autoComplete="email" placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/><input name="password" required minLength={6} type="password" autoComplete={authMode==="login"?"current-password":"new-password"} placeholder="كلمة المرور (6 أحرف على الأقل)" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand"/><button disabled={authLoading} type="submit" className="w-full rounded-xl bg-brand py-3.5 font-bold text-white hover:bg-blue-700 disabled:opacity-60">{authLoading?"جارٍ التنفيذ...":authMode==="login"?"دخول":"إنشاء الحساب"}</button></form>{authMessage&&<p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800">{authMessage}</p>}<button onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthMessage("")}} className="mt-5 w-full text-sm font-bold text-brand">{authMode==="login"?"ليس لديك حساب؟ أنشئ حسابًا":"لديك حساب بالفعل؟ سجل الدخول"}</button></div></div>}
 
-    {quizOpen && selectedExam!==null && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4"><div className="my-8 w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8" dir="rtl"><div className="flex items-center justify-between"><div><p className="text-xs font-bold text-brand">نموذج تجريبي • {exams[selectedExam].subject}</p><h2 className="mt-1 text-xl font-black">{exams[selectedExam].title}</h2></div><button onClick={closeQuiz} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div>{!quizFinished?<><div className="mt-6 flex items-center justify-between text-sm text-slate-500"><span>السؤال {questionIndex+1} من {demoQuestions.length}</span><span><Timer className="ml-1 inline" size={16}/> تجربة بدون توقيت فعلي</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand transition-all" style={{width:`${((questionIndex+1)/demoQuestions.length)*100}%`}}/></div><h3 className="mt-7 text-lg font-bold leading-8">{demoQuestions[questionIndex].q}</h3><div className="mt-5 space-y-3">{demoQuestions[questionIndex].choices.map((choice,i)=><button key={choice} onClick={()=>chooseAnswer(i)} className={`w-full rounded-xl border p-4 text-right transition ${answers[questionIndex]===i?"border-brand bg-blue-50 text-brand":"border-slate-200 hover:border-blue-300"}`}>{choice}</button>)}</div><button disabled={answers[questionIndex]===undefined} onClick={nextQuestion} className="mt-7 w-full rounded-xl bg-brand py-3.5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{questionIndex===demoQuestions.length-1?"إنهاء وعرض النتيجة":"السؤال التالي"}</button></>:<div className="py-8 text-center"><CheckCircle2 className="mx-auto text-emerald-500" size={48}/><h3 className="mt-4 text-2xl font-black">انتهى النموذج التجريبي</h3><p className="mt-2 text-slate-500">نتيجتك: {score} من {demoQuestions.length}</p><button onClick={closeQuiz} className="mt-6 rounded-xl bg-brand px-8 py-3 font-bold text-white">إغلاق</button></div>}<p className="mt-5 text-center text-xs leading-5 text-slate-400">هذه تجربة محلية للتصميم فقط؛ لا تُحفظ الإجابات في قاعدة البيانات.</p></div></div>}
+    {quizOpen && selectedExam!==null && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4"><div className="my-8 w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8" dir="rtl"><div className="flex items-center justify-between"><div><p className="text-xs font-bold text-brand">نموذج تجريبي • {exams[selectedExam].subject}</p><h2 className="mt-1 text-xl font-black">{exams[selectedExam].title}</h2></div><button onClick={closeQuiz} className="rounded-xl p-2 hover:bg-slate-100" aria-label="إغلاق"><X/></button></div>{!quizFinished?<><div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-right"><div className="flex items-center justify-between gap-3"><b className="text-amber-900">مراقبة نزاهة الامتحان</b><span className="rounded-full bg-white px-3 py-1 text-sm font-black text-amber-800">{quizStrikes}/3 إنذارات</span></div><div className="mt-3 flex gap-2">{[0,1,2].map(n=><span key={n} className={`h-2 flex-1 rounded-full ${n<quizStrikes?"bg-red-500":"bg-amber-200"}`}/>)}</div>{integrityNotice && <p role="alert" className="mt-3 text-sm font-bold leading-6 text-amber-900">{integrityNotice}</p>}<p className="mt-2 text-xs leading-5 text-amber-800">يُسجل النظام مغادرة تبويب الامتحان أو الخروج من ملء الشاشة. لا يقرأ التطبيقات الأخرى.</p></div><div className="mt-6 flex items-center justify-between text-sm text-slate-500"><span>السؤال {questionIndex+1} من {demoQuestions.length}</span><span><Timer className="ml-1 inline" size={16}/> تجربة بدون توقيت فعلي</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand transition-all" style={{width:`${((questionIndex+1)/demoQuestions.length)*100}%`}}/></div><h3 className="mt-7 text-lg font-bold leading-8">{demoQuestions[questionIndex].q}</h3><div className="mt-5 space-y-3">{demoQuestions[questionIndex].choices.map((choice,i)=><button key={choice} onClick={()=>chooseAnswer(i)} className={`w-full rounded-xl border p-4 text-right transition ${answers[questionIndex]===i?"border-brand bg-blue-50 text-brand":"border-slate-200 hover:border-blue-300"}`}>{choice}</button>)}</div><button disabled={answers[questionIndex]===undefined} onClick={nextQuestion} className="mt-7 w-full rounded-xl bg-brand py-3.5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{questionIndex===demoQuestions.length-1?"إنهاء وعرض النتيجة":"السؤال التالي"}</button></>:<div className="py-8 text-center">{quizLocked ? <><LockKeyhole className="mx-auto text-red-500" size={48}/><h3 className="mt-4 text-2xl font-black text-red-600">تم قفل الامتحان</h3><p className="mt-2 leading-7 text-slate-600">تم تسجيل 3 مخالفات نزاهة. لا يمكن استكمال هذه المحاولة.</p></> : <><CheckCircle2 className="mx-auto text-emerald-500" size={48}/><h3 className="mt-4 text-2xl font-black">انتهى النموذج التجريبي</h3><p className="mt-2 text-slate-500">نتيجتك: {score} من {demoQuestions.length}</p></>}<button onClick={closeQuiz} className="mt-6 rounded-xl bg-brand px-8 py-3 font-bold text-white">إغلاق</button></div>}<p className="mt-5 text-center text-xs leading-5 text-slate-400">هذه تجربة محلية للتصميم فقط؛ لا تُحفظ الإجابات في قاعدة البيانات.</p></div></div>}
   </main>;
 }
