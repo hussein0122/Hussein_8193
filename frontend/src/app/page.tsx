@@ -27,7 +27,7 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authUser, setAuthUser] = useState<{ id: string; email: string; name: string; role: string } | null>(null);
-  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([]);
+  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([]);\n  const [teacherRequests, setTeacherRequests] = useState<any[]>([]);
   const [teacherQuizzes, setTeacherQuizzes] = useState<any[]>([]);
   const [teacherBusy, setTeacherBusy] = useState(false);
   const [teacherMessage, setTeacherMessage] = useState("");
@@ -120,6 +120,16 @@ export default function Home() {
     setTeacherMessage(error ? error.message : "تم نشر الامتحان وإتاحته للطلاب."); if (!error) setTeacherQuizzes(old=>old.map(q=>q.id===id?{...q,published:true}:q)); setTeacherBusy(false);
   }
 
+  useEffect(() => {
+    if (!authUser || authUser.role !== "ADMIN") return;
+    let active = true;
+    supabase.from("teacher_requests").select("id,user_id,note,status,created_at,profiles(full_name,email)").eq("status","PENDING").order("created_at",{ascending:false}).then(({data})=>{if(active)setTeacherRequests(data??[]);});
+    return ()=>{active=false;};
+  }, [authUser?.id,authUser?.role]);
+  async function reviewTeacherRequest(id:string, approve:boolean) {
+    const {error}=await supabase.rpc("approve_teacher_request",{request_id:id,approve});
+    if(error) setTeacherMessage(error.message); else {setTeacherRequests(old=>old.filter(x=>x.id!==id));setTeacherMessage(approve?"تم اعتماد حساب المعلم.":"تم رفض طلب المعلم.");}
+  }
   const score = useMemo(() => answers.reduce((sum, answer, i) => sum + (answer === demoQuestions[i]?.correct ? 1 : 0), 0), [answers]);
 
   function openAuth(mode: "login" | "register", selectedRole = role) {
@@ -142,7 +152,7 @@ export default function Home() {
         if (role === "teacher") {
           const request = await supabase.from("teacher_requests").upsert({ user_id: result.data.user.id, note: "طلب تفعيل حساب معلم" }, { onConflict: "user_id" });
           if (request.error) throw request.error;
-          setAuthMessage("تم إنشاء حسابك واستلام طلب تفعيل المعلم. ستظهر أدوات إنشاء الامتحانات بعد اعتماد الإدارة.");
+          setTeacherMessage("تم إنشاء حسابك واستلام طلب تفعيل المعلم. ستظهر أدوات إنشاء الامتحانات بعد اعتماد الإدارة.");
         }
       } else {
         const result = await supabase.auth.signInWithPassword({ email, password });
@@ -191,7 +201,7 @@ export default function Home() {
     </header>
 
     {authUser && <section id="dashboard" className="scroll-mt-24 bg-blue-50 py-14"><div className="mx-auto max-w-7xl px-5 lg:px-8"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="font-bold text-brand">لوحة التحكم</p><h2 className="mt-2 text-3xl font-black">أهلاً {authUser.name}</h2><p className="mt-2 text-slate-600">{authUser.role==="TEACHER"?"إدارة المواد والامتحانات والأسئلة":"حساب الطالب — تصفح الامتحانات المتاحة"}</p></div><span className="rounded-full bg-white px-4 py-2 text-sm font-bold">{authUser.role==="TEACHER"?"معلم معتمد":"طالب"}</span></div>
-      {authUser.role==="TEACHER" ? <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      {authUser.role==="ADMIN" ? <div className="mt-8 rounded-3xl bg-white p-6"><h3 className="text-xl font-black">طلبات اعتماد المعلمين</h3>{teacherRequests.length?teacherRequests.map(req=><div key={req.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4"><div><b>{req.profiles?.full_name||"معلم جديد"}</b><p className="text-sm text-slate-500">{req.profiles?.email}</p></div><div className="flex gap-2"><button onClick={()=>reviewTeacherRequest(req.id,true)} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white">اعتماد</button><button onClick={()=>reviewTeacherRequest(req.id,false)} className="rounded-xl border px-4 py-2 text-sm font-bold">رفض</button></div></div>):<p className="mt-3 text-slate-500">لا توجد طلبات معلقة.</p>}</div> : authUser.role==="TEACHER" ? <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-3xl bg-white p-6 shadow-sm"><h3 className="text-xl font-black">إنشاء مادة</h3><form onSubmit={createSubject} className="mt-4 flex gap-2"><input required value={newSubject} onChange={e=>setNewSubject(e.target.value)} placeholder="اسم المادة" className="min-w-0 flex-1 rounded-xl border p-3"/><button disabled={teacherBusy} className="rounded-xl bg-brand px-5 font-bold text-white">إضافة</button></form><div className="mt-4 space-y-2">{teacherSubjects.map(sub=><div key={sub.id} className="rounded-xl bg-slate-50 p-3 font-bold">{sub.name}</div>)}</div></div>
         <div className="rounded-3xl bg-white p-6 shadow-sm"><h3 className="text-xl font-black">إنشاء امتحان</h3><form onSubmit={createQuiz} className="mt-4 space-y-3"><input required value={newQuiz.title} onChange={e=>setNewQuiz({...newQuiz,title:e.target.value})} placeholder="عنوان الامتحان" className="w-full rounded-xl border p-3"/><textarea value={newQuiz.description} onChange={e=>setNewQuiz({...newQuiz,description:e.target.value})} placeholder="وصف الامتحان" className="w-full rounded-xl border p-3"/><select required value={newQuiz.subjectId} onChange={e=>setNewQuiz({...newQuiz,subjectId:e.target.value})} className="w-full rounded-xl border p-3"><option value="">اختر المادة</option>{teacherSubjects.map(sub=><option key={sub.id} value={sub.id}>{sub.name}</option>)}</select><label className="block text-sm">مدة الامتحان بالدقائق<input type="number" min="1" max="300" value={newQuiz.duration} onChange={e=>setNewQuiz({...newQuiz,duration:Number(e.target.value)})} className="mt-1 w-full rounded-xl border p-3"/></label><button disabled={teacherBusy||!teacherSubjects.length} className="w-full rounded-xl bg-brand p-3 font-bold text-white disabled:opacity-50">حفظ كمسودة</button></form></div>
         <div className="rounded-3xl bg-white p-6 shadow-sm lg:col-span-2"><h3 className="text-xl font-black">إضافة سؤال اختيار من متعدد</h3><form onSubmit={addQuestion} className="mt-4 grid gap-3 md:grid-cols-2"><select required value={newQuestion.quizId} onChange={e=>setNewQuestion({...newQuestion,quizId:e.target.value})} className="rounded-xl border p-3"><option value="">اختر الامتحان</option>{teacherQuizzes.map(q=><option key={q.id} value={q.id}>{q.title}</option>)}</select><input required value={newQuestion.body} onChange={e=>setNewQuestion({...newQuestion,body:e.target.value})} placeholder="نص السؤال" className="rounded-xl border p-3"/><textarea required value={newQuestion.options} onChange={e=>setNewQuestion({...newQuestion,options:e.target.value})} placeholder={"اكتب كل اختيار في سطر مستقل"} className="min-h-28 rounded-xl border p-3"/><div className="space-y-3"><input type="number" min="1" value={newQuestion.correct} onChange={e=>setNewQuestion({...newQuestion,correct:e.target.value})} placeholder="رقم الاختيار الصحيح (1، 2...)" className="w-full rounded-xl border p-3"/><input type="number" min="0.5" step="0.5" value={newQuestion.points} onChange={e=>setNewQuestion({...newQuestion,points:Number(e.target.value)})} className="w-full rounded-xl border p-3" placeholder="درجة السؤال"/></div><button disabled={teacherBusy} className="rounded-xl bg-brand p-3 font-bold text-white md:col-span-2">إضافة السؤال</button></form></div>
