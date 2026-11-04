@@ -219,9 +219,15 @@ export default function Home() {
   async function publishQuiz(id: string) {
     setBusy(true); setNotice("");
     try {
-      const { count, error: countError } = await supabase.from("questions").select("id", { count: "exact", head: true }).eq("quiz_id", id);
-      if (countError) throw countError;
-      if (!count) throw new Error("لا يمكن نشر امتحان بدون أسئلة.");
+      const { data: questionRows, error: questionError } = await supabase.from("questions").select("id").eq("quiz_id", id);
+      if (questionError) throw questionError;
+      if (!questionRows?.length) throw new Error("لا يمكن نشر امتحان بدون أسئلة.");
+      const questionIds = questionRows.map((q: any) => q.id);
+      const { data: optionRows, error: optionError } = await supabase.from("options").select("question_id").in("question_id", questionIds);
+      if (optionError) throw optionError;
+      const optionCounts = new Map<string, number>();
+      (optionRows || []).forEach((o: any) => optionCounts.set(o.question_id, (optionCounts.get(o.question_id) || 0) + 1));
+      if (questionIds.some((questionId: string) => (optionCounts.get(questionId) || 0) < 2)) throw new Error("كل سؤال يجب أن يحتوي على اختيارين على الأقل قبل النشر.");
       const { error } = await supabase.from("quizzes").update({ published: true }).eq("id", id);
       if (error) throw error;
       setQuizzes(old => old.map(q => q.id === id ? { ...q, published: true } : q));
@@ -292,15 +298,16 @@ export default function Home() {
     const timer = window.setInterval(() => {
       setActiveExam(old => {
         if (!old || old.result !== null || old.locked) return old;
-        if (old.secondsLeft <= 1) {
-          window.setTimeout(() => void finishExam(false), 0);
-          return { ...old, secondsLeft: 0 };
-        }
+        if (old.secondsLeft <= 1) return { ...old, secondsLeft: 0 };
         return { ...old, secondsLeft: old.secondsLeft - 1 };
       });
     }, 1000);
     return () => window.clearInterval(timer);
   }, [activeExam?.id, activeExam?.result, activeExam?.locked, finishExam]);
+
+  useEffect(() => {
+    if (activeExam && activeExam.result === null && !activeExam.locked && activeExam.secondsLeft === 0) void finishExam(false);
+  }, [activeExam?.secondsLeft, activeExam?.result, activeExam?.locked, finishExam]);
 
   useEffect(() => {
     if (!activeExam || activeExam.result !== null || activeExam.locked) return;
