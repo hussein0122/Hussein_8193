@@ -395,7 +395,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <a href="#home" className="flex items-center gap-3">
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-700 text-white"><GraduationCap size={25}/></span>
-            <span><b className="block text-lg">مِنصّة</b><small className="text-xs text-slate-500">التعليم والاختبارات</small></span>
+            <span><b className="block text-lg">Quizora</b><small className="text-xs text-slate-500">التعليم والاختبارات</small></span>
           </a>
           <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex">
             <a href="#home" className="hover:text-blue-700">الرئيسية</a>
