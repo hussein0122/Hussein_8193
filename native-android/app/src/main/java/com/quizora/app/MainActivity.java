@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
   TextView h=txt(title,23,Color.WHITE,true);h.setPadding(0,0,0,8);hero.addView(h);
   TextView tagline=txt("منصة تجمع الامتحانات الإلكترونية ومتابعة النتائج وإدارة المحتوى التعليمي.",13,Color.rgb(219,231,255),false);tagline.setGravity(Gravity.RIGHT);hero.addView(tagline);
   LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=14;hp.bottomMargin=14;root.addView(hero,hp);
-  body=new LinearLayout(this);body.setOrientation(1);root.addView(body);
+  body=new LinearLayout(this);body.setOrientation(1);body.setPadding(16,16,16,16);body.setBackground(bg(Color.WHITE,24));LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,-2);bp.topMargin=4;root.addView(body,bp);
  }
  private void addText(LinearLayout box,String s,int size,boolean bold){TextView t=txt(s,size,ink,bold);t.setPadding(0,8,0,8);box.addView(t);}
  private Button btn(LinearLayout box,String s,Runnable action){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setBackground(bg(blue,16));b.setPadding(18,12,18,12);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=8;box.addView(b,p);b.setOnClickListener(v->action.run());return b;}
@@ -53,6 +53,10 @@ public class MainActivity extends Activity {
   btn(card,"إنشاء حساب جديد",()->{String n=fullName.getText().toString().trim(),em=email.getText().toString().trim();if(n.length()<2||em.isEmpty()||pass.getText().length()<8){msg("اكتب الاسم والبريد، واجعل كلمة المرور 8 أحرف على الأقل");return;}String chosen=accountType.getCheckedRadioButtonId()==202?"TEACHER":"STUDENT";auth(em,pass.getText().toString(),n,true,chosen);});
   btn(card,"نسيت كلمة المرور؟",()->resetPassword(email.getText().toString().trim()));
   addText(body,"بياناتك محفوظة على نفس حساب Quizora المستخدم في الموقع.",12,false);
+  addText(body,"مميزات المنصة",18,true);
+  LinearLayout feature1=new LinearLayout(this);feature1.setOrientation(1);feature1.setPadding(14,12,14,12);feature1.setBackground(bg(Color.rgb(239,244,255),18));addText(feature1,"📘 اختبارات منظمة",15,true);addText(feature1,"امتحانات بمدة محددة وأسئلة مرتبة ونتائج محفوظة.",13,false);body.addView(feature1);
+  LinearLayout feature2=new LinearLayout(this);feature2.setOrientation(1);feature2.setPadding(14,12,14,12);feature2.setBackground(bg(Color.rgb(239,244,255),18));addText(feature2,"🛡️ نزاهة الامتحان",15,true);addText(feature2,"تسجيل مغادرة شاشة الامتحان والتنبيه عند تكرار المخالفة.",13,false);body.addView(feature2);
+  LinearLayout feature3=new LinearLayout(this);feature3.setOrientation(1);feature3.setPadding(14,12,14,12);feature3.setBackground(bg(Color.rgb(239,244,255),18));addText(feature3,"📊 متابعة الأداء",15,true);addText(feature3,"سجل للمحاولات والدرجات لمتابعة تقدمك الدراسي.",13,false);body.addView(feature3);
  }
  private void auth(String email,String password,String fullName,boolean signup,String requestedRole){
   SupabaseAuth service=new SupabaseAuth(this);
