@@ -36,7 +36,7 @@ public final class SupabaseApi {
                     else if(raw.startsWith(String.valueOf((char)34)))cb.done(null,new JSONObject().put("value",new JSONArray("["+raw+"]").optString(0)),null);
                     if(raw.startsWith("["))cb.done(new JSONArray(raw),null,null);
                     else if(raw.startsWith("{"))cb.done(null,new JSONObject(raw),null);
-                    else if(raw.startsWith("\\""))cb.done(null,new JSONObject().put("value",new JSONArray("["+raw+"]").optString(0)),null);
+                    else if(raw.startsWith(String.valueOf((char)34)))cb.done(null,new JSONObject().put("value",new JSONArray("["+raw+"]").optString(0)),null);
                     else cb.done(null,new JSONObject().put("value",raw),null);
                 }catch(Exception e){cb.done(null,null,"تعذر قراءة استجابة الخادم.");}
             }
