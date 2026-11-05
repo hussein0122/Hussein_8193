@@ -13,7 +13,7 @@ import android.text.InputType;
 import org.json.*;
 
 public class MainActivity extends Activity {
- private LinearLayout root,body; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId="";
+ private LinearLayout root,body; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId=""; private String signupRole="STUDENT";
  private int blue=Color.rgb(36,87,214),ink=Color.rgb(25,39,70); private JSONArray currentQuestions=new JSONArray(); private CountDownTimer examTimer; private TextView timerView; private boolean inExam=false; private long examMillis=0;
  @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);if(db.token().isEmpty())authScreen();else loadProfile();}
  private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
@@ -27,18 +27,38 @@ public class MainActivity extends Activity {
  private Button btn(LinearLayout box,String s,Runnable action){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(blue));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=8;box.addView(b,p);b.setOnClickListener(v->action.run());return b;}
  private void msg(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
  private JSONObject obj(String... kv){JSONObject j=new JSONObject();try{for(int i=0;i+1<kv.length;i+=2)j.put(kv[i],kv[i+1]);}catch(Exception ignored){}return j;}
- private void authScreen(){base("مرحباً بك في Quizora");addText(body,"منصتك للاختبارات والتعلم",16,false);EditText email=field("البريد الإلكتروني",false),pass=field("كلمة المرور",true);body.addView(email);body.addView(pass);
-  btn(body,"تسجيل الدخول",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("راجع البريد وكلمة المرور");return;}auth(email.getText().toString().trim(),pass.getText().toString(),false);});
-  btn(body,"إنشاء حساب طالب",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("أدخل البريد وكلمة مرور 6 أحرف على الأقل");return;}auth(email.getText().toString().trim(),pass.getText().toString(),true);});
-  btn(body,"نسيت كلمة المرور؟",()->resetPassword(email.getText().toString().trim()));
+ private void authScreen(){
+  base("اختباراتك ودراستك في مكان واحد");
+  addText(body,"منصة تجمع الامتحانات الإلكترونية ومتابعة النتائج وإدارة المحتوى التعليمي.",15,false);
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setPadding(18,18,18,18);card.setBackground(bg(Color.WHITE,24));
+  LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=14;body.addView(card,cp);
+  addText(card,"تسجيل الدخول أو إنشاء حساب",19,true);
+  EditText fullName=field("الاسم بالكامل (للحساب الجديد)",false);
+  EditText email=field("البريد الإلكتروني",false),pass=field("كلمة المرور",true);
+  card.addView(fullName);card.addView(email);card.addView(pass);
+  addText(card,"نوع الحساب عند التسجيل",14,true);
+  RadioGroup accountType=new RadioGroup(this);accountType.setOrientation(RadioGroup.HORIZONTAL);
+  RadioButton student=new RadioButton(this);student.setText("طالب");student.setId(201);student.setChecked(true);
+  RadioButton teacher=new RadioButton(this);teacher.setText("معلم (يتطلب اعتماد الإدارة)");teacher.setId(202);
+  accountType.addView(student);accountType.addView(teacher);card.addView(accountType);
+  btn(card,"تسجيل الدخول",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("أدخل البريد وكلمة المرور بشكل صحيح");return;}auth(email.getText().toString().trim(),pass.getText().toString(),"",false,"STUDENT");});
+  btn(card,"إنشاء حساب جديد",()->{String n=fullName.getText().toString().trim(),em=email.getText().toString().trim();if(n.length()<2||em.isEmpty()||pass.getText().length()<8){msg("اكتب الاسم والبريد، واجعل كلمة المرور 8 أحرف على الأقل");return;}String chosen=accountType.getCheckedRadioButtonId()==202?"TEACHER":"STUDENT";auth(em,pass.getText().toString(),n,true,chosen);});
+  btn(card,"نسيت كلمة المرور؟",()->resetPassword(email.getText().toString().trim()));
+  addText(body,"بياناتك محفوظة على نفس حساب Quizora المستخدم في الموقع.",12,false);
  }
- private void auth(String email,String password,boolean signup){
+ private void auth(String email,String password,String fullName,boolean signup,String requestedRole){
   SupabaseAuth service=new SupabaseAuth(this);
+  signupRole=requestedRole;
   SupabaseAuth.Callback cb=new SupabaseAuth.Callback(){
-   public void onSuccess(JSONObject data){runOnUiThread(()->{if(signup&&!data.has("access_token"))msg("تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجّل الدخول.");else loadProfile();});}
+   public void onSuccess(JSONObject data){runOnUiThread(()->{
+    if(signup&&!data.has("access_token")){msg("تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجّل الدخول.");return;}
+    if(signup&&"TEACHER".equals(requestedRole)){
+     db.insert("teacher_requests",obj("user_id",data.optJSONObject("user")==null?"":data.optJSONObject("user").optString("id"),"note","طلب تفعيل حساب معلم"),(rows,o,e)->runOnUiThread(()->{if(e!=null)msg("تم إنشاء الحساب، لكن تعذر إرسال طلب اعتماد المعلم: "+e);else msg("تم إنشاء الحساب وإرسال طلب اعتماد المعلم للإدارة.");loadProfile();}));
+    } else loadProfile();
+   });}
    public void onError(String error){runOnUiThread(()->msg(error));}
   };
-  if(signup)service.signUp(email,password,cb);else service.signIn(email,password,cb);
+  if(signup)service.signUp(email,password,fullName,cb);else service.signIn(email,password,cb);
  }
  private void resetPassword(String email){if(email.isEmpty()){msg("اكتب بريدك الإلكتروني أولاً");return;}new Thread(()->{try{okhttp3.OkHttpClient c=new okhttp3.OkHttpClient();okhttp3.Request r=new okhttp3.Request.Builder().url(BuildConfig.SUPABASE_URL+"/auth/v1/recover").header("apikey",BuildConfig.SUPABASE_ANON_KEY).post(okhttp3.RequestBody.create(obj("email",email).toString(),okhttp3.MediaType.get("application/json"))).build();okhttp3.Response x=c.newCall(r).execute();runOnUiThread(()->msg(x.isSuccessful()?"تم إرسال رابط استعادة كلمة المرور إلى بريدك":"تعذر إرسال رابط الاستعادة"));}catch(Exception e){runOnUiThread(()->msg("تحقق من الإنترنت"));}}).start();}
  private void loadProfile(){db.get("profiles","select=id,full_name,role&id=eq."+db.userId(),(rows,o,e)->runOnUiThread(()->{if(e!=null||rows==null||rows.length()==0){db.clear();authScreen();return;}JSONObject p=rows.optJSONObject(0);role=p.optString("role","STUDENT");name=p.optString("full_name","");dashboard();}));}
