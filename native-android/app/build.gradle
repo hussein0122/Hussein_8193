@@ -4,7 +4,7 @@ def localProps = new Properties()
 def localPropsFile = rootProject.file("local.properties")
 if (localPropsFile.exists()) localPropsFile.withInputStream { localProps.load(it) }
 
-def supabaseUrl = localProps.getProperty('SUPABASE_URL', '')
+def supabaseUrl = localProps.getProperty('SUPABASE_URL', 'https://gneaozncqslfjkztznoy.supabase.co')
 def supabaseKey = localProps.getProperty('SUPABASE_ANON_KEY', '')
 
 android {
