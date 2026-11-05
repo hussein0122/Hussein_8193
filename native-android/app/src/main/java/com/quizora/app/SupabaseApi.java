@@ -24,7 +24,7 @@ public final class SupabaseApi {
     private void call(String method,String path,JSONObject body,Result cb){
         if(base.isEmpty()||key.isEmpty()){cb.done(null,null,"إعدادات الاتصال بقاعدة البيانات غير مضبوطة.");return;}
         Request.Builder b=new Request.Builder().url(base+path).header("apikey",key).header("Authorization","Bearer "+token()).header("Accept","application/json");
-        if(body!=null)b.header("Content-Type","application/json");
+        if(body!=null)b.header("Content-Type","application/json").header("Prefer","return=representation");
         RequestBody rb=body==null?null:RequestBody.create(body.toString(),MediaType.get("application/json; charset=utf-8"));
         switch(method){case "POST":b.post(rb);break;case "PATCH":b.patch(rb);break;case "DELETE":b.delete();break;default:b.get();}
         http.newCall(b.build()).enqueue(new okhttp3.Callback(){
