@@ -4,27 +4,27 @@ def localProps = new Properties()
 def localPropsFile = rootProject.file("local.properties")
 if (localPropsFile.exists()) localPropsFile.withInputStream { localProps.load(it) }
 
+def supabaseUrl = localProps.getProperty('SUPABASE_URL', '')
+def supabaseKey = localProps.getProperty('SUPABASE_ANON_KEY', '')
+
 android {
     namespace 'com.quizora.app'
     compileSdk 35
-
     defaultConfig {
         applicationId 'com.quizora.app'
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName '1.0.0'
-        buildConfigField 'String', 'SUPABASE_URL', '"' + (localProps.getProperty('SUPABASE_URL', '')).replace('"','\\\"') + '"'
-        buildConfigField 'String', 'SUPABASE_ANON_KEY', '"' + (localProps.getProperty('SUPABASE_ANON_KEY', '')).replace('"','\\\"') + '"'
+        versionCode 2
+        versionName '1.1.0'
+        buildConfigField 'String', 'SUPABASE_URL', '"' + supabaseUrl.replace('"','\\\"') + '"'
+        buildConfigField 'String', 'SUPABASE_ANON_KEY', '"' + supabaseKey.replace('"','\\\"') + '"'
     }
-
     buildFeatures { buildConfig true }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 }
-
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
