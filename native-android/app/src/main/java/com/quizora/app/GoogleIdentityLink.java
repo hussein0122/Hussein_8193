@@ -19,7 +19,7 @@ public final class GoogleIdentityLink {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private final Context context;
     private final SharedPreferences prefs;
-    private final OkHttpClient http = new OkHttpClient();
+    private final OkHttpClient http = new OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build();
 
     public GoogleIdentityLink(Context c) {
         context = c.getApplicationContext();
@@ -61,8 +61,10 @@ public final class GoogleIdentityLink {
         } catch (Exception e) { callback.onError("تعذر تجهيز حماية OAuth PKCE."); }
     }
 
-    public void complete(String authCode, Callback callback) {
+    public void complete(String authCode, String returnedState, Callback callback) {
         String verifier = prefs.getString("google_link_verifier", "");
+        String expectedState = prefs.getString("google_link_state", "");
+        if (expectedState.isEmpty() || returnedState == null || !expectedState.equals(returnedState)) { callback.onError("فشل التحقق الأمني من طلب الربط. أعد المحاولة."); return; }
         if (verifier.isEmpty()) { callback.onError("انتهت جلسة الربط. ابدأ الربط من جديد."); return; }
         JSONObject body = new JSONObject();
         try { body.put("auth_code", authCode); body.put("code_verifier", verifier); }
