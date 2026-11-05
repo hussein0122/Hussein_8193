@@ -19,12 +19,20 @@ public class MainActivity extends Activity {
  private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
  private TextView txt(String s,int z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);if(bold)t.setTypeface(null,Typeface.BOLD);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);return t;}
  private EditText field(String hint,boolean pass){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(!hint.contains("وصف")&&!hint.contains("السؤال"));e.setTextSize(15);e.setPadding(15,8,15,8);e.setBackground(bg(Color.WHITE,16));if(pass)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=10;e.setLayoutParams(p);return e;}
- private void base(String title){ScrollView sc=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(20,22,20,28);root.setBackgroundColor(Color.rgb(246,248,252));sc.addView(root);setContentView(sc);
-  TextView brand=txt("Q  Quizora",25,blue,true);brand.setGravity(Gravity.RIGHT);root.addView(brand);TextView h=txt(title,23,ink,true);h.setPadding(0,22,0,8);root.addView(h);
+ private void base(String title){
+  ScrollView sc=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(18,18,18,28);root.setBackgroundColor(Color.rgb(245,247,251));sc.addView(root);setContentView(sc);
+  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(14,12,14,12);header.setBackground(bg(Color.WHITE,20));
+  TextView mark=txt("🎓",23,Color.WHITE,true);mark.setGravity(Gravity.CENTER);mark.setBackground(bg(blue,15));LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(48,48);mp.setMargins(0,0,12,0);header.addView(mark,mp);
+  LinearLayout brandBox=new LinearLayout(this);brandBox.setOrientation(1);TextView brand=txt("Quizora",19,ink,true);brand.setGravity(Gravity.RIGHT);TextView sub=txt("التعليم والاختبارات",11,Color.rgb(100,116,139),false);sub.setGravity(Gravity.RIGHT);brandBox.addView(brand);brandBox.addView(sub);header.addView(brandBox);
+  root.addView(header);
+  LinearLayout hero=new LinearLayout(this);hero.setOrientation(1);hero.setPadding(20,22,20,22);GradientDrawable heroBg=new GradientDrawable(GradientDrawable.Orientation.RIGHT_LEFT,new int[]{Color.rgb(23,37,84),Color.rgb(30,64,145),Color.rgb(49,87,213)});heroBg.setCornerRadius(26);hero.setBackground(heroBg);
+  TextView h=txt(title,23,Color.WHITE,true);h.setPadding(0,0,0,8);hero.addView(h);
+  TextView tagline=txt("منصة تجمع الامتحانات الإلكترونية ومتابعة النتائج وإدارة المحتوى التعليمي.",13,Color.rgb(219,231,255),false);tagline.setGravity(Gravity.RIGHT);hero.addView(tagline);
+  LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=14;hp.bottomMargin=14;root.addView(hero,hp);
   body=new LinearLayout(this);body.setOrientation(1);root.addView(body);
  }
  private void addText(LinearLayout box,String s,int size,boolean bold){TextView t=txt(s,size,ink,bold);t.setPadding(0,8,0,8);box.addView(t);}
- private Button btn(LinearLayout box,String s,Runnable action){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(blue));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=8;box.addView(b,p);b.setOnClickListener(v->action.run());return b;}
+ private Button btn(LinearLayout box,String s,Runnable action){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setBackground(bg(blue,16));b.setPadding(18,12,18,12);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=8;box.addView(b,p);b.setOnClickListener(v->action.run());return b;}
  private void msg(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
  private JSONObject obj(String... kv){JSONObject j=new JSONObject();try{for(int i=0;i+1<kv.length;i+=2)j.put(kv[i],kv[i+1]);}catch(Exception ignored){}return j;}
  private void authScreen(){
