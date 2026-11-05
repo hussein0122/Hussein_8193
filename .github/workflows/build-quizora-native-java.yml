@@ -2,43 +2,49 @@ name: Build Quizora Native Java APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [native-java-android]
+    paths:
+      - "native-android/**"
+      - ".github/workflows/build-quizora-native-java.yml"
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - name: Configure Supabase public client
-        working-directory: native-android
-        run: |
-          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > local.properties
+      - name: Validate Supabase configuration
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-
-      - name: Build debug APK
+        run: |
+          test -n "$SUPABASE_URL" || (echo "Missing repository secret SUPABASE_URL" && exit 1)
+          test -n "$SUPABASE_ANON_KEY" || (echo "Missing repository secret SUPABASE_ANON_KEY" && exit 1)
+      - name: Configure Supabase public client
+        working-directory: native-android
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > local.properties
+      - name: Build native Java APK
         working-directory: native-android
         run: gradle assembleDebug
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Quizora-Native-Java-APK
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
