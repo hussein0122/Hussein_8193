@@ -31,7 +31,14 @@ public class MainActivity extends Activity {
   btn(body,"إنشاء حساب طالب",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("أدخل البريد وكلمة مرور 6 أحرف على الأقل");return;}auth(email.getText().toString().trim(),pass.getText().toString(),true);});
   btn(body,"نسيت كلمة المرور؟",()->resetPassword(email.getText().toString().trim()));
  }
- private void auth(String email,String password,boolean signup){JSONObject j=obj("email",email,"password",password);if(signup)j.putSafe("data",obj("full_name",email.split("@")[0]));}
+ private void auth(String email,String password,boolean signup){
+  SupabaseAuth service=new SupabaseAuth(this);
+  SupabaseAuth.Callback cb=new SupabaseAuth.Callback(){
+   public void onSuccess(JSONObject data){runOnUiThread(()->{if(signup&&!data.has("access_token"))msg("تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجّل الدخول.");else loadProfile();});}
+   public void onError(String error){runOnUiThread(()->msg(error));}
+  };
+  if(signup)service.signUp(email,password,cb);else service.signIn(email,password,cb);
+ }
  private void resetPassword(String email){if(email.isEmpty()){msg("اكتب بريدك الإلكتروني أولاً");return;}new Thread(()->{try{okhttp3.OkHttpClient c=new okhttp3.OkHttpClient();okhttp3.Request r=new okhttp3.Request.Builder().url(BuildConfig.SUPABASE_URL+"/auth/v1/recover").header("apikey",BuildConfig.SUPABASE_ANON_KEY).post(okhttp3.RequestBody.create(obj("email",email).toString(),okhttp3.MediaType.get("application/json"))).build();okhttp3.Response x=c.newCall(r).execute();runOnUiThread(()->msg(x.isSuccessful()?"تم إرسال رابط استعادة كلمة المرور إلى بريدك":"تعذر إرسال رابط الاستعادة"));}catch(Exception e){runOnUiThread(()->msg("تحقق من الإنترنت"));}}).start();}
  private void loadProfile(){db.get("profiles","select=id,full_name,role&id=eq."+db.userId(),(rows,o,e)->runOnUiThread(()->{if(e!=null||rows==null||rows.length()==0){db.clear();authScreen();return;}JSONObject p=rows.optJSONObject(0);role=p.optString("role","STUDENT");name=p.optString("full_name","");dashboard();}));}
  private void dashboard(){base("أهلاً "+name);addText(body,"نوع الحساب: "+role,14,false);
