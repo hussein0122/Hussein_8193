@@ -6,7 +6,7 @@ Deno.serve(async(req:Request)=>{
  if(req.method!=="POST")return respond({error:"METHOD_NOT_ALLOWED"},405);
  try{
   const url=Deno.env.get("SUPABASE_URL")!,anonKey=Deno.env.get("SUPABASE_ANON_KEY")!,serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const authHeader=req.headers.get("Authorization")||"",token=authHeader.replace(/^Bearer\\s+/i,"");
+  const authHeader=req.headers.get("Authorization")||"",token=authHeader.replace(/^Bearer\s+/i,"");
   if(!token||token===authHeader)return respond({error:"UNAUTHORIZED"},401);
   const authClient=createClient(url,anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
   const {data:authData,error:authError}=await authClient.auth.getUser(token);
