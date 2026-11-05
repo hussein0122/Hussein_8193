@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
   if(error!=null){msg("لم يكتمل ربط Google: "+error);return;}
   String code=uri.getQueryParameter("code");
   if(code==null||code.isEmpty()){msg("لم يصل رمز تأكيد Google");return;}
-  new GoogleIdentityLink(this).complete(code,new GoogleIdentityLink.Callback(){
+  new GoogleIdentityLink(this).complete(code,uri.getQueryParameter("state"),new GoogleIdentityLink.Callback(){
    public void onSuccess(){runOnUiThread(()->{msg("تم ربط حساب Google بحساب Quizora بنجاح");dashboard();});}
    public void onError(String e){runOnUiThread(()->msg("تعذر إكمال الربط: "+e));}
   });
