@@ -29,10 +29,15 @@ public final class SupabaseAuth {
         request("/auth/v1/token?grant_type=password", body, callback, true);
     }
 
-    public void signUp(String email, String password, Callback callback) {
+    public void signUp(String email, String password, String fullName, Callback callback) {
         JSONObject body = new JSONObject();
-        try { body.put("email", email); body.put("password", password); }
-        catch (Exception e) { callback.onError("البيانات غير صالحة"); return; }
+        try {
+            body.put("email", email);
+            body.put("password", password);
+            JSONObject metadata = new JSONObject();
+            metadata.put("full_name", fullName);
+            body.put("data", metadata);
+        } catch (Exception e) { callback.onError("البيانات غير صالحة"); return; }
         request("/auth/v1/signup", body, callback, true);
     }
 
