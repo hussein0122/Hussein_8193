@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.Quizora" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#2457D6</item>
+        <item name="colorPrimaryVariant">#173DA5</item>
+        <item name="colorSecondary">#D9A441</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:statusBarColor">#173DA5</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
