@@ -2,6 +2,8 @@ package com.quizora.app;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -15,7 +17,7 @@ import org.json.*;
 public class MainActivity extends Activity {
  private LinearLayout root,body; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId=""; private String signupRole="STUDENT";
  private int blue=Color.rgb(36,87,214),ink=Color.rgb(25,39,70); private JSONArray currentQuestions=new JSONArray(); private CountDownTimer examTimer; private TextView timerView; private boolean inExam=false; private long examMillis=0;
- @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);if(db.token().isEmpty())authScreen();else loadProfile();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);if(db.token().isEmpty())authScreen();else loadProfile();handleGoogleCallback(getIntent()==null?null:getIntent().getData());}
  private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
  private TextView txt(String s,int z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);if(bold)t.setTypeface(null,Typeface.BOLD);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);return t;}
  private EditText field(String hint,boolean pass){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(!hint.contains("وصف")&&!hint.contains("السؤال"));e.setTextSize(15);e.setPadding(15,8,15,8);e.setBackground(bg(Color.WHITE,16));if(pass)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=10;e.setLayoutParams(p);return e;}
@@ -78,8 +80,30 @@ public class MainActivity extends Activity {
   if(role.equals("STUDENT")){btn(body,"الامتحانات المتاحة",this::studentExams);btn(body,"سجل النتائج",this::history);btn(body,"طلب تفعيل حساب معلم",this::teacherRequest);}
   if(role.equals("TEACHER")){btn(body,"إدارة المواد",this::subjects);btn(body,"إنشاء امتحان",this::createExam);btn(body,"امتحاناتي والنتائج",this::teacherExams);}
   if(role.equals("ADMIN")){btn(body,"طلبات تفعيل المعلمين",this::adminRequests);btn(body,"المستخدمون",this::users);}
-  btn(body,"تعديل الاسم",this::editName);btn(body,"تسجيل الخروج",()->{db.clear();authScreen();});
+  btn(body,"ربط حساب Google",this::linkGoogle);btn(body,"تعديل الاسم",this::editName);btn(body,"تسجيل الخروج",()->{db.clear();authScreen();});
  }
+
+ private void linkGoogle(){
+  if(db.token().isEmpty()){msg("سجّل الدخول أولاً");return;}
+  GoogleIdentityLink link=new GoogleIdentityLink(this);
+  link.start(db.token(),new GoogleIdentityLink.Callback(){
+   public void onSuccess(){runOnUiThread(()->msg("جاري فتح صفحة Google لإتمام الربط"));}
+   public void onError(String error){runOnUiThread(()->msg(error));}
+  });
+ }
+ private void handleGoogleCallback(Uri uri){
+  if(uri==null||!"com.quizora.app".equals(uri.getScheme())||!"oauth".equals(uri.getHost()))return;
+  String error=uri.getQueryParameter("error_description");
+  if(error==null)error=uri.getQueryParameter("error");
+  if(error!=null){msg("لم يكتمل ربط Google: "+error);return;}
+  String code=uri.getQueryParameter("code");
+  if(code==null||code.isEmpty()){msg("لم يصل رمز تأكيد Google");return;}
+  new GoogleIdentityLink(this).complete(code,new GoogleIdentityLink.Callback(){
+   public void onSuccess(){runOnUiThread(()->{msg("تم ربط حساب Google بحساب Quizora بنجاح");dashboard();});}
+   public void onError(String e){runOnUiThread(()->msg("تعذر إكمال الربط: "+e));}
+  });
+ }
+ @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleGoogleCallback(intent.getData());}
  private void studentExams(){base("الامتحانات المتاحة");db.get("quizzes","select=id,title,description,duration_minutes,subject_id&published=eq.true&order=created_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}if(a.length()==0)addText(body,"لا توجد امتحانات منشورة حالياً",15,false);for(int i=0;i<a.length();i++){JSONObject q=a.optJSONObject(i);btn(body,q.optString("title")+" • "+q.optInt("duration_minutes")+" دقيقة",()->startExam(q));}}));btn(body,"رجوع",this::dashboard);}
  private void startExam(JSONObject q){examId=q.optString("id");examMillis=Math.max(1,q.optInt("duration_minutes",30))*60L*1000L;JSONObject p=new JSONObject();try{p.put("exam_id",examId);}catch(Exception ignored){}db.rpc("start_exam",p,(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}attemptId=o!=null?o.optString("value"):a!=null?a.optString(0):"";loadQuestions();}));}
  private void loadQuestions(){inExam=true;startTimer();db.get("questions","select=id,body,points,question_type,sort_order&quiz_id=eq."+examId+"&order=sort_order.asc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}currentQuestions=a;renderQuestion(0);}));}
