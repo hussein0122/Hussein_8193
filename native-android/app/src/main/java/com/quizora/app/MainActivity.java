@@ -65,10 +65,6 @@ public class MainActivity extends Activity {
   try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}
   return true;
  }
- @Override public void onBackPressed(){
-  if(appWebView!=null&&appWebView.canGoBack())appWebView.goBack();
-  else super.onBackPressed();
- }
  private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
  private TextView txt(String s,int z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);if(bold)t.setTypeface(null,Typeface.BOLD);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);return t;}
  private EditText field(String hint,boolean pass){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(!hint.contains("وصف")&&!hint.contains("السؤال"));e.setTextSize(15);e.setPadding(15,8,15,8);e.setBackground(bg(Color.WHITE,16));if(pass)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=10;e.setLayoutParams(p);return e;}
@@ -179,5 +175,5 @@ public class MainActivity extends Activity {
  private void editName(){base("تعديل الاسم");EditText n=field("الاسم الجديد",false);n.setText(name);body.addView(n);btn(body,"حفظ",()->{JSONObject j=obj("full_name",n.getText().toString());db.patch("profiles","id=eq."+db.userId(),j,(a,o,e)->runOnUiThread(()->{if(e==null){name=n.getText().toString();dashboard();}else msg(e);}));});}
  private void startTimer(){if(examTimer!=null)examTimer.cancel();examTimer=new CountDownTimer(examMillis,1000){public void onTick(long ms){examMillis=ms;if(timerView!=null){long s=ms/1000;timerView.setText(String.format(java.util.Locale.US,"الوقت المتبقي: %02d:%02d",s/60,s%60));}}public void onFinish(){inExam=false;msg("انتهى الوقت وسيتم تسليم الامتحان");submitExam();}}.start();}
  @Override protected void onPause(){super.onPause();if(inExam&&!attemptId.isEmpty()){JSONObject p=new JSONObject();try{p.put("attempt_id",attemptId);p.put("event_type","WINDOW_BLUR");}catch(Exception ignored){}db.rpc("register_integrity_violation",p,(a,o,e)->runOnUiThread(()->{if(o!=null&&o.optBoolean("locked")){inExam=false;if(examTimer!=null)examTimer.cancel();msg("تم قفل المحاولة بعد تسجيل ثلاث مخالفات.");}}));}}
- @Override public void onBackPressed(){if(inExam){msg("لا تغادر الامتحان؛ استخدم زر التسليم.");return;}dashboard();}
+ @Override public void onBackPressed(){if(inExam){msg("لا تغادر الامتحان؛ استخدم زر التسليم.");return;}if(appWebView!=null&&appWebView.canGoBack()){appWebView.goBack();return;}super.onBackPressed();}
 }
