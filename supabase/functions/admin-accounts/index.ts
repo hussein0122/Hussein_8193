@@ -35,7 +35,9 @@ Deno.serve(async(req:Request)=>{
     const subjectIds=(subjects||[]).map((x:{id:string})=>x.id);
     const {data:owned,error:quizReadError}=await admin.from("quizzes").select("id").eq("created_by",targetId);
     if(quizReadError)throw quizReadError;
-    const quizIds=Array.from(new Set([...(owned||[]).map((x:{id:string})=>x.id)]));
+    let subjectQuizzes:{id:string}[]=[];
+    if(subjectIds.length){const {data,error}=await admin.from("quizzes").select("id").in("subject_id",subjectIds);if(error)throw error;subjectQuizzes=data||[];}
+    const quizIds=Array.from(new Set([...(owned||[]),...subjectQuizzes].map((x:{id:string})=>x.id)));
     if(quizIds.length){const {error}=await admin.from("exam_attempts").delete().in("exam_id",quizIds);if(error)throw error;const {error:delError}=await admin.from("quizzes").delete().in("id",quizIds);if(delError)throw delError;}
     if(subjectIds.length){const {error}=await admin.from("subjects").delete().in("id",subjectIds);if(error)throw error;}
    }
