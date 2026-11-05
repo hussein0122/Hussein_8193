@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
  private int blue=Color.rgb(36,87,214),ink=Color.rgb(25,39,70); private JSONArray currentQuestions=new JSONArray(); private CountDownTimer examTimer; private TextView timerView; private boolean inExam=false; private long examMillis=0;
  @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);showWebApp();handleGoogleCallback(getIntent()==null?null:getIntent().getData());}
  private void showWebApp(){
-  if(appWebView!=null){appWebView.stopLoading();appWebView.destroy();}
+  if(appWebView!=null){appWebView.loadUrl("https://hussein-exam-platform.vercel.app/");return;}
   getWindow().setStatusBarColor(Color.rgb(23,61,165));
   getWindow().setNavigationBarColor(Color.WHITE);
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
