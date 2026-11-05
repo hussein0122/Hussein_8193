@@ -4,102 +4,63 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 import android.text.InputType;
-import android.graphics.drawable.GradientDrawable;
+import org.json.*;
 
 public class MainActivity extends Activity {
-    private LinearLayout root;
-    private EditText emailField, passwordField;
-    private TextView message;
-    private SupabaseAuth auth;
-    private boolean registerMode = false;
-
-    @Override protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        auth = new SupabaseAuth(this);
-        showAuth();
-    }
-
-    private GradientDrawable shape(int color, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color); d.setCornerRadius(radius); return d;
-    }
-
-    private TextView text(String value, int size, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(value); t.setTextSize(size); t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        return t;
-    }
-
-    private void showAuth() {
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL); root.setPadding(28, 40, 28, 24);
-        root.setBackgroundColor(Color.rgb(247,249,253));
-        ScrollView scroll = new ScrollView(this); scroll.addView(root);
-        setContentView(scroll);
-
-        TextView logo = text("Q", 34, Color.WHITE, true);
-        logo.setGravity(Gravity.CENTER); logo.setBackground(shape(Color.rgb(36,87,214), 24));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(76,76); lp.bottomMargin=18; root.addView(logo,lp);
-        TextView title=text("Quizora",30,Color.rgb(25,39,70),true); root.addView(title);
-        TextView subtitle=text(registerMode ? "أنشئ حسابك وابدأ رحلتك التعليمية" : "سجّل دخولك للمتابعة",15,Color.GRAY,false);
-        subtitle.setPadding(0,8,0,28); root.addView(subtitle);
-
-        emailField = field("البريد الإلكتروني", false); root.addView(emailField);
-        passwordField = field("كلمة المرور", true); root.addView(passwordField);
-        message=text("",14,Color.rgb(190,45,45),false); message.setPadding(0,12,0,8); root.addView(message);
-
-        Button submit = new Button(this); submit.setText(registerMode ? "إنشاء حساب" : "تسجيل الدخول");
-        submit.setTextColor(Color.WHITE); submit.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(36,87,214)));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1,56); bp.topMargin=12; root.addView(submit,bp);
-        submit.setOnClickListener(v -> submitAuth());
-
-        TextView switchMode=text(registerMode ? "لديك حساب؟ تسجيل الدخول" : "ليس لديك حساب؟ إنشاء حساب",15,Color.rgb(36,87,214),true);
-        switchMode.setPadding(0,24,0,10); switchMode.setOnClickListener(v->{registerMode=!registerMode;showAuth();}); root.addView(switchMode);
-        TextView note=text("تطبيق Quizora الأصلي • يتطلب اتصالاً بالإنترنت",12,Color.GRAY,false);
-        note.setPadding(0,24,0,0); root.addView(note);
-    }
-
-    private EditText field(String hint, boolean password) {
-        EditText e=new EditText(this); e.setSingleLine(true); e.setHint(hint);
-        e.setTextSize(16); e.setPadding(16,10,16,10); e.setBackground(shape(Color.WHITE,16));
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,58); p.bottomMargin=12; e.setLayoutParams(p);
-        if(password) e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        else e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        return e;
-    }
-
-    private void submitAuth() {
-        String email=emailField.getText().toString().trim();
-        String password=passwordField.getText().toString();
-        if(email.isEmpty() || password.length()<6) { message.setText("اكتب البريد وكلمة مرور من 6 أحرف على الأقل."); return; }
-        message.setText("جارٍ الاتصال...");
-        View current=root; 
-        SupabaseAuth.Callback callback=new SupabaseAuth.Callback() {
-            @Override public void onSuccess(org.json.JSONObject data) {
-                runOnUiThread(()->{
-                    if(registerMode && !data.has("access_token")) {
-                        message.setTextColor(Color.rgb(30,130,70));
-                        message.setText("تم إنشاء الحساب. راجع بريدك إذا كان تأكيد البريد مفعلاً.");
-                    } else showHome();
-                });
-            }
-            @Override public void onError(String error) { runOnUiThread(()->message.setText(error)); }
-        };
-        if(registerMode) auth.signUp(email,password,callback); else auth.signIn(email,password,callback);
-    }
-
-    private void showHome() {
-        root.removeAllViews();
-        TextView welcome=text("أهلاً بك في Quizora",26,Color.rgb(25,39,70),true);
-        welcome.setPadding(0,40,0,18); root.addView(welcome);
-        TextView info=text("تم تسجيل الدخول بنجاح. هذه أول نسخة من التطبيق الأصلي بلغة Java. سيتم ربط لوحات الطالب والمعلم والإدارة بعد مطابقة صلاحيات وقاعدة بيانات الموقع.",16,Color.DKGRAY,false);
-        root.addView(info);
-        Button logout=new Button(this); logout.setText("تسجيل الخروج"); root.addView(logout);
-        logout.setOnClickListener(v->{auth.signOut();registerMode=false;showAuth();});
-    }
+ private LinearLayout root,body; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId="";
+ private int blue=Color.rgb(36,87,214),ink=Color.rgb(25,39,70); private JSONArray currentQuestions=new JSONArray();
+ @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);if(db.token().isEmpty())authScreen();else loadProfile();}
+ private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
+ private TextView txt(String s,int z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);if(bold)t.setTypeface(null,Typeface.BOLD);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);return t;}
+ private EditText field(String hint,boolean pass){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(!hint.contains("وصف")&&!hint.contains("السؤال"));e.setTextSize(15);e.setPadding(15,8,15,8);e.setBackground(bg(Color.WHITE,16));if(pass)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=10;e.setLayoutParams(p);return e;}
+ private void base(String title){ScrollView sc=new ScrollView(this);root=new LinearLayout(this);root.setOrientation(1);root.setPadding(20,22,20,28);root.setBackgroundColor(Color.rgb(246,248,252));sc.addView(root);setContentView(sc);
+  TextView brand=txt("Q  Quizora",25,blue,true);brand.setGravity(Gravity.RIGHT);root.addView(brand);TextView h=txt(title,23,ink,true);h.setPadding(0,22,0,8);root.addView(h);
+  body=new LinearLayout(this);body.setOrientation(1);root.addView(body);
+ }
+ private void addText(LinearLayout box,String s,int size,boolean bold){TextView t=txt(s,size,ink,bold);t.setPadding(0,8,0,8);box.addView(t);}
+ private Button btn(LinearLayout box,String s,Runnable action){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(blue));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=8;box.addView(b,p);b.setOnClickListener(v->action.run());return b;}
+ private void msg(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
+ private JSONObject obj(String... kv){JSONObject j=new JSONObject();try{for(int i=0;i+1<kv.length;i+=2)j.put(kv[i],kv[i+1]);}catch(Exception ignored){}return j;}
+ private void authScreen(){base("مرحباً بك في Quizora");addText(body,"منصتك للاختبارات والتعلم",16,false);EditText email=field("البريد الإلكتروني",false),pass=field("كلمة المرور",true);body.addView(email);body.addView(pass);
+  btn(body,"تسجيل الدخول",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("راجع البريد وكلمة المرور");return;}auth(email.getText().toString().trim(),pass.getText().toString(),false);});
+  btn(body,"إنشاء حساب طالب",()->{if(email.getText().toString().trim().isEmpty()||pass.getText().length()<6){msg("أدخل البريد وكلمة مرور 6 أحرف على الأقل");return;}auth(email.getText().toString().trim(),pass.getText().toString(),true);});
+  btn(body,"نسيت كلمة المرور؟",()->resetPassword(email.getText().toString().trim()));
+ }
+ private void auth(String email,String password,boolean signup){JSONObject j=obj("email",email,"password",password);if(signup)j.putSafe("data",obj("full_name",email.split("@")[0]));}
+ private void resetPassword(String email){if(email.isEmpty()){msg("اكتب بريدك الإلكتروني أولاً");return;}new Thread(()->{try{okhttp3.OkHttpClient c=new okhttp3.OkHttpClient();okhttp3.Request r=new okhttp3.Request.Builder().url(BuildConfig.SUPABASE_URL+"/auth/v1/recover").header("apikey",BuildConfig.SUPABASE_ANON_KEY).post(okhttp3.RequestBody.create(obj("email",email).toString(),okhttp3.MediaType.get("application/json"))).build();okhttp3.Response x=c.newCall(r).execute();runOnUiThread(()->msg(x.isSuccessful()?"تم إرسال رابط استعادة كلمة المرور إلى بريدك":"تعذر إرسال رابط الاستعادة"));}catch(Exception e){runOnUiThread(()->msg("تحقق من الإنترنت"));}}).start();}
+ private void loadProfile(){db.get("profiles","select=id,full_name,role&id=eq."+db.userId(),(rows,o,e)->runOnUiThread(()->{if(e!=null||rows==null||rows.length()==0){db.clear();authScreen();return;}JSONObject p=rows.optJSONObject(0);role=p.optString("role","STUDENT");name=p.optString("full_name","");dashboard();}));}
+ private void dashboard(){base("أهلاً "+name);addText(body,"نوع الحساب: "+role,14,false);
+  if(role.equals("STUDENT")){btn(body,"الامتحانات المتاحة",this::studentExams);btn(body,"سجل النتائج",this::history);btn(body,"طلب تفعيل حساب معلم",this::teacherRequest);}
+  if(role.equals("TEACHER")){btn(body,"إدارة المواد",this::subjects);btn(body,"إنشاء امتحان",this::createExam);btn(body,"امتحاناتي والنتائج",this::teacherExams);}
+  if(role.equals("ADMIN")){btn(body,"طلبات تفعيل المعلمين",this::adminRequests);btn(body,"المستخدمون",this::users);}
+  btn(body,"تعديل الاسم",this::editName);btn(body,"تسجيل الخروج",()->{db.clear();authScreen();});
+ }
+ private void studentExams(){base("الامتحانات المتاحة");db.get("quizzes","select=id,title,description,duration_minutes,subject_id&published=eq.true&order=created_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}if(a.length()==0)addText(body,"لا توجد امتحانات منشورة حالياً",15,false);for(int i=0;i<a.length();i++){JSONObject q=a.optJSONObject(i);btn(body,q.optString("title")+" • "+q.optInt("duration_minutes")+" دقيقة",()->startExam(q));}}));btn(body,"رجوع",this::dashboard);}
+ private void startExam(JSONObject q){examId=q.optString("id");JSONObject p=new JSONObject();try{p.put("p_exam_id",examId);}catch(Exception ignored){}db.rpc("start_exam",p,(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}attemptId=o!=null?o.optString("value"):a!=null?a.optString(0):"";loadQuestions();}));}
+ private void loadQuestions(){db.get("questions","select=id,body,points,question_type,sort_order&quiz_id=eq."+examId+"&order=sort_order.asc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}currentQuestions=a;renderQuestion(0);}));}
+ private void renderQuestion(int index){base("حل الامتحان");if(index>=currentQuestions.length()){btn(body,"تسليم الامتحان",this::submitExam);return;}JSONObject q=currentQuestions.optJSONObject(index);String qid=q.optString("id");addText(body,(index+1)+". "+q.optString("body"),18,true);
+  if(!q.optString("question_type","MCQ").equals("MCQ")){addText(body,"هذا النوع من الأسئلة غير مدعوم حالياً في التطبيق؛ يمكنك إكماله من الموقع.",14,false);btn(body,"التالي",()->renderQuestion(index+1));return;}
+  db.get("options","select=id,body&question_id=eq."+qid+"&order=sort_order.asc",(opts,x,err)->runOnUiThread(()->{if(err!=null){msg(err);return;}RadioGroup group=new RadioGroup(this);group.setOrientation(1);for(int k=0;k<opts.length();k++){JSONObject op=opts.optJSONObject(k);RadioButton rb=new RadioButton(this);rb.setText(op.optString("body"));rb.setTextSize(16);rb.setTag(op.optString("id"));group.addView(rb);}body.addView(group);btn(body,"حفظ الإجابة",()->{int checked=group.getCheckedRadioButtonId();if(checked==-1){msg("اختر إجابة");return;}RadioButton rb=group.findViewById(checked);JSONObject args=new JSONObject();try{args.put("p_attempt_id",attemptId);args.put("p_question_id",qid);args.put("p_option_id",rb.getTag().toString());}catch(Exception ignored){}db.rpc("save_mcq_answer",args,(r,z,er)->runOnUiThread(()->{if(er!=null)msg(er);else renderQuestion(index+1);}));});}));}
+ private void submitExam(){JSONObject p=new JSONObject();try{p.put("p_attempt_id",attemptId);}catch(Exception ignored){}db.rpc("submit_exam",p,(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}base("تم تسليم الامتحان");addText(body,"درجتك: "+(o==null?"—":o.optString("value")),24,true);btn(body,"العودة للرئيسية",this::dashboard);}));}
+ private void history(){base("سجل النتائج");db.get("exam_attempts","select=id,exam_id,status,score,submitted_at&student_id=eq."+db.userId()+"&order=started_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);addText(body,"الحالة: "+x.optString("status")+"  •  الدرجة: "+x.optString("score","لم تسلم"),15,true);}}));btn(body,"رجوع",this::dashboard);}
+ private void teacherRequest(){base("طلب تفعيل معلم");EditText note=field("اكتب نبذة عنك (اختياري)",false);body.addView(note);btn(body,"إرسال الطلب",()->{JSONObject j=new JSONObject();try{j.put("user_id",db.userId());j.put("note",note.getText().toString());}catch(Exception ignored){}db.insert("teacher_requests",j,(a,o,e)->runOnUiThread(()->msg(e==null?"تم إرسال طلبك للإدارة":e)));});btn(body,"رجوع",this::dashboard);}
+ private void subjects(){base("المواد الدراسية");EditText n=field("اسم المادة",false),d=field("وصف المادة",false);body.addView(n);body.addView(d);btn(body,"إضافة مادة",()->{JSONObject j=new JSONObject();try{j.put("name",n.getText().toString());j.put("description",d.getText().toString());j.put("teacher_id",db.userId());}catch(Exception ignored){}db.insert("subjects",j,(a,o,e)->runOnUiThread(()->msg(e==null?"تمت إضافة المادة":e)));});db.get("subjects","select=id,name,description&teacher_id=eq."+db.userId(),(a,o,e)->runOnUiThread(()->{if(a!=null)for(int i=0;i<a.length();i++)addText(body,a.optJSONObject(i).optString("name"),16,true);}));btn(body,"رجوع",this::dashboard);}
+ private void createExam(){base("إنشاء امتحان");EditText title=field("عنوان الامتحان",false),desc=field("الوصف",false),duration=field("المدة بالدقائق",false);duration.setInputType(InputType.TYPE_CLASS_NUMBER);body.addView(title);body.addView(desc);body.addView(duration);
+  db.get("subjects","select=id,name&teacher_id=eq."+db.userId(),(a,o,e)->runOnUiThread(()->{if(a==null||a.length()==0){msg("أضف مادة أولاً");return;}String[] names=new String[a.length()];String[] ids=new String[a.length()];for(int i=0;i<a.length();i++){names[i]=a.optJSONObject(i).optString("name");ids[i]=a.optJSONObject(i).optString("id");}Spinner sp=new Spinner(this);sp.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));body.addView(sp);btn(body,"إنشاء الامتحان",()->{JSONObject j=new JSONObject();try{j.put("title",title.getText().toString());j.put("description",desc.getText().toString());j.put("duration_minutes",Math.max(1,Integer.parseInt(duration.getText().toString())));j.put("subject_id",ids[sp.getSelectedItemPosition()]);j.put("created_by",db.userId());j.put("published",false);}catch(Exception ex){msg("أكمل البيانات بشكل صحيح");return;}db.insert("quizzes",j,(rows,ob,er)->runOnUiThread(()->{if(er!=null)msg(er);else{String id=ob!=null?ob.optString("id"):rows!=null?rows.optJSONObject(0).optString("id"):"";addQuestion(id);}}));});}));btn(body,"رجوع",this::dashboard);}
+ private void addQuestion(String quiz){base("إضافة سؤال");EditText question=field("نص السؤال",false),a=field("الاختيار الأول",false),b=field("الاختيار الثاني",false),c=field("الاختيار الثالث",false),d=field("الاختيار الرابع",false);body.addView(question);body.addView(a);body.addView(b);body.addView(c);body.addView(d);String[] correct={"0"};RadioGroup rg=new RadioGroup(this);for(int i=0;i<4;i++){RadioButton rb=new RadioButton(this);rb.setText("الاختيار "+(i+1)+" صحيح");rb.setId(100+i);rg.addView(rb);}rg.check(100);body.addView(rg);
+  btn(body,"حفظ السؤال",()->{JSONObject j=new JSONObject();try{j.put("quiz_id",quiz);j.put("body",question.getText().toString());j.put("question_type","MCQ");j.put("points",1);j.put("sort_order",0);}catch(Exception ignored){}db.insert("questions",j,(r,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}String qid=o!=null?o.optString("id"):r.optJSONObject(0).optString("id");EditText[] fs={a,b,c,d};for(int i=0;i<4;i++){final int k=i;JSONObject op=new JSONObject();try{op.put("question_id",qid);op.put("body",fs[i].getText().toString());op.put("is_correct",rg.getCheckedRadioButtonId()==100+i);op.put("sort_order",i);}catch(Exception ignored){}db.insert("options",op,(x,y,z)->{if(z!=null)runOnUiThread(()->msg(z));});}msg("تم حفظ السؤال والاختيارات");addQuestion(quiz);}));});
+  btn(body,"نشر الامتحان",()->{JSONObject p=new JSONObject();try{p.put("published",true);}catch(Exception ignored){}db.patch("quizzes","id=eq."+quiz,p,(r,o,e)->runOnUiThread(()->msg(e==null?"تم نشر الامتحان":e)));});
+ }
+ private void teacherExams(){base("امتحاناتي");db.get("quizzes","select=id,title,published,subject_id&created_by=eq."+db.userId()+"&order=created_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}for(int i=0;i<a.length();i++){JSONObject q=a.optJSONObject(i);addText(body,q.optString("title")+" • "+(q.optBoolean("published")?"منشور":"مسودة"),16,true);btn(body,"عرض نتائج الطلاب",()->teacherResults(q.optString("id")));}}));btn(body,"رجوع",this::dashboard);}
+ private void teacherResults(String exam){base("نتائج الطلاب");db.get("exam_attempts","select=id,student_id,status,score,submitted_at&exam_id=eq."+exam+"&order=started_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);addText(body,"طالب: "+x.optString("student_id")+" • "+x.optString("status")+" • "+x.optString("score"),14,false);}}));}
+ private void adminRequests(){base("طلبات المعلمين");db.get("teacher_requests","select=id,user_id,note,status,created_at&status=eq.PENDING&order=created_at.asc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);addText(body,"المستخدم: "+x.optString("user_id")+"\n"+x.optString("note"),14,false);String id=x.optString("id");btn(body,"موافقة",()->review(id,true));btn(body,"رفض",()->review(id,false));}}));btn(body,"رجوع",this::dashboard);}
+ private void review(String id,boolean approve){JSONObject p=new JSONObject();try{p.put("request_id",id);p.put("approve",approve);}catch(Exception ignored){}db.rpc("approve_teacher_request",p,(a,o,e)->runOnUiThread(()->{msg(e==null?"تم تحديث الطلب":e);adminRequests();}));}
+ private void users(){base("المستخدمون");db.get("profiles","select=id,full_name,email,role&order=created_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}for(int i=0;i<a.length();i++){JSONObject u=a.optJSONObject(i);addText(body,u.optString("full_name")+"\n"+u.optString("email")+" • "+u.optString("role"),14,false);}}));btn(body,"رجوع",this::dashboard);}
+ private void editName(){base("تعديل الاسم");EditText n=field("الاسم الجديد",false);n.setText(name);body.addView(n);btn(body,"حفظ",()->{JSONObject j=obj("full_name",n.getText().toString());db.patch("profiles","id=eq."+db.userId(),j,(a,o,e)->runOnUiThread(()->{if(e==null){name=n.getText().toString();dashboard();}else msg(e);}));});}
+ @Override public void onBackPressed(){dashboard();}
 }
