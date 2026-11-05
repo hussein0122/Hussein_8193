@@ -34,6 +34,7 @@ public final class GoogleIdentityLink {
             prefs.edit().putString("google_link_verifier", verifier).putString("google_link_state", state).apply();
             HttpUrl url = HttpUrl.parse(BuildConfig.SUPABASE_URL.replaceAll("/+$", "") + "/auth/v1/user/identities/authorize")
                 .newBuilder().addQueryParameter("provider", "google")
+                .addQueryParameter("scopes", "openid email profile")
                 .addQueryParameter("redirect_to", REDIRECT)
                 .addQueryParameter("code_challenge", challenge)
                 .addQueryParameter("code_challenge_method", "s256")
