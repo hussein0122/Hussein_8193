@@ -12,12 +12,63 @@ import android.view.View;
 import android.widget.*;
 import android.os.CountDownTimer;
 import android.text.InputType;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebResourceRequest;
 import org.json.*;
 
 public class MainActivity extends Activity {
- private LinearLayout root,body; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId=""; private String signupRole="STUDENT";
+ private LinearLayout root,body; private WebView appWebView; private SupabaseApi db; private String role="STUDENT",name="",attemptId="",examId=""; private String signupRole="STUDENT";
  private int blue=Color.rgb(36,87,214),ink=Color.rgb(25,39,70); private JSONArray currentQuestions=new JSONArray(); private CountDownTimer examTimer; private TextView timerView; private boolean inExam=false; private long examMillis=0;
- @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);if(db.token().isEmpty())authScreen();else loadProfile();handleGoogleCallback(getIntent()==null?null:getIntent().getData());}
+ @Override public void onCreate(Bundle b){super.onCreate(b);db=new SupabaseApi(this);showWebApp();handleGoogleCallback(getIntent()==null?null:getIntent().getData());}
+ private void showWebApp(){
+  if(appWebView!=null){appWebView.stopLoading();appWebView.destroy();}
+  getWindow().setStatusBarColor(Color.rgb(23,61,165));
+  getWindow().setNavigationBarColor(Color.WHITE);
+  getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+  appWebView=new WebView(this);
+  appWebView.setBackgroundColor(Color.WHITE);
+  appWebView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+  WebSettings settings=appWebView.getSettings();
+  settings.setJavaScriptEnabled(true);
+  settings.setDomStorageEnabled(true);
+  settings.setDatabaseEnabled(true);
+  settings.setLoadWithOverviewMode(true);
+  settings.setUseWideViewPort(true);
+  settings.setJavaScriptCanOpenWindowsAutomatically(false);
+  settings.setSupportMultipleWindows(false);
+  settings.setAllowFileAccess(false);
+  settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+  appWebView.setWebChromeClient(new WebChromeClient());
+  appWebView.setWebViewClient(new WebViewClient(){
+   @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return routeWebUrl(request.getUrl());}
+   @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return routeWebUrl(Uri.parse(url));}
+   @Override public void onReceivedError(WebView view,WebResourceRequest request,android.webkit.WebResourceError error){
+    if(request.isForMainFrame())msg("تعذر تحميل Quizora. تحقق من اتصال الإنترنت ثم أعد المحاولة.");
+   }
+  });
+  setContentView(appWebView);
+  appWebView.loadUrl("https://hussein-exam-platform.vercel.app/");
+ }
+ private boolean routeWebUrl(Uri uri){
+  if(uri==null)return false;
+  String scheme=uri.getScheme()==null?"":uri.getScheme();
+  String host=uri.getHost()==null?"":uri.getHost().toLowerCase();
+  if("com.quizora.app".equals(scheme)){handleGoogleCallback(uri);return true;}
+  if("https".equals(scheme)&&(host.equals("accounts.google.com")||host.endsWith(".google.com")||host.equals("consent.google.com"))){
+   try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}
+   return true;
+  }
+  if("https".equals(scheme)||"http".equals(scheme))return false;
+  try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}
+  return true;
+ }
+ @Override public void onBackPressed(){
+  if(appWebView!=null&&appWebView.canGoBack())appWebView.goBack();
+  else super.onBackPressed();
+ }
  private GradientDrawable bg(int c,int r){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(r);return d;}
  private TextView txt(String s,int z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);if(bold)t.setTypeface(null,Typeface.BOLD);t.setGravity(Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);return t;}
  private EditText field(String hint,boolean pass){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(!hint.contains("وصف")&&!hint.contains("السؤال"));e.setTextSize(15);e.setPadding(15,8,15,8);e.setBackground(bg(Color.WHITE,16));if(pass)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=10;e.setLayoutParams(p);return e;}
@@ -99,11 +150,11 @@ public class MainActivity extends Activity {
   String code=uri.getQueryParameter("code");
   if(code==null||code.isEmpty()){msg("لم يصل رمز تأكيد Google");return;}
   new GoogleIdentityLink(this).complete(code,uri.getQueryParameter("state"),new GoogleIdentityLink.Callback(){
-   public void onSuccess(){runOnUiThread(()->{msg("تم ربط حساب Google بحساب Quizora بنجاح");dashboard();});}
+   public void onSuccess(){runOnUiThread(()->{msg("تم ربط حساب Google بحساب Quizora بنجاح");showWebApp();});}
    public void onError(String e){runOnUiThread(()->msg("تعذر إكمال الربط: "+e));}
   });
  }
- @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleGoogleCallback(intent.getData());}
+ @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);Uri data=intent.getData();if(data!=null)handleGoogleCallback(data);else if(appWebView!=null)appWebView.reload();}
  private void studentExams(){base("الامتحانات المتاحة");db.get("quizzes","select=id,title,description,duration_minutes,subject_id&published=eq.true&order=created_at.desc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}if(a.length()==0)addText(body,"لا توجد امتحانات منشورة حالياً",15,false);for(int i=0;i<a.length();i++){JSONObject q=a.optJSONObject(i);btn(body,q.optString("title")+" • "+q.optInt("duration_minutes")+" دقيقة",()->startExam(q));}}));btn(body,"رجوع",this::dashboard);}
  private void startExam(JSONObject q){examId=q.optString("id");examMillis=Math.max(1,q.optInt("duration_minutes",30))*60L*1000L;JSONObject p=new JSONObject();try{p.put("exam_id",examId);}catch(Exception ignored){}db.rpc("start_exam",p,(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}attemptId=o!=null?o.optString("value"):a!=null?a.optString(0):"";loadQuestions();}));}
  private void loadQuestions(){inExam=true;startTimer();db.get("questions","select=id,body,points,question_type,sort_order&quiz_id=eq."+examId+"&order=sort_order.asc",(a,o,e)->runOnUiThread(()->{if(e!=null){msg(e);return;}currentQuestions=a;renderQuestion(0);}));}
