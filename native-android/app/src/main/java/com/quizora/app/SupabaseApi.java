@@ -33,7 +33,7 @@ public final class SupabaseApi {
                 String raw=r.body()==null?"":r.body().string();
                 if(!r.isSuccessful()){String err=raw;try{JSONObject j=new JSONObject(raw);err=j.optString("message",j.optString("hint",j.optString("error",raw)));}catch(Exception ignored){}cb.done(null,null,err);return;}
                 try{
-                    if(raw.isEmpty()){cb.done(new JSONArray(),null,null);return;}
+                    else if(raw.startsWith(String.valueOf((char)34)))cb.done(null,new JSONObject().put("value",new JSONArray("["+raw+"]").optString(0)),null);
                     if(raw.startsWith("["))cb.done(new JSONArray(raw),null,null);
                     else if(raw.startsWith("{"))cb.done(null,new JSONObject(raw),null);
                     else if(raw.startsWith("\\""))cb.done(null,new JSONObject().put("value",new JSONArray("["+raw+"]").optString(0)),null);
